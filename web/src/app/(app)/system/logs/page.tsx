@@ -11,7 +11,7 @@ import {
   Settings,
   TriangleAlert,
 } from "lucide-react";
-import { type ComponentType, useEffect, useState } from "react";
+import { type ComponentType, useState } from "react";
 
 import { StatusDot } from "@/components/status";
 import { Button } from "@/components/ui/button";
