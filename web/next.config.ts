@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Self-contained server output for the Docker image.
+  output: "standalone",
 };
 
 export default nextConfig;

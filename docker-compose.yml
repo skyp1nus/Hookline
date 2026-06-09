@@ -1,0 +1,80 @@
+name: hookline
+
+# Local development stack: Postgres + Redis + backend (modular monolith) + frontend (BFF).
+# Production reuses the shared Hetzner web network instead; see docs.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hookline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hookline}
+      POSTGRES_DB: hookline
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hookline -d hookline"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=hookline;Username=hookline;Password=${POSTGRES_PASSWORD:-hookline}"
+      ConnectionStrings__Redis: "redis:6379"
+      TokenEncryption__Key: ${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-change-me}
+      Identity__SigningKey: ${IDENTITY_SIGNING_KEY:-dev-identity-signing-key-change-me}
+      BackendAuth__AdminToken: ${BACKEND_ADMIN_TOKEN:-dev-admin-token}
+      # Fast-dev escape hatch — runs as a dev admin without the BFF token/identity.
+      Auth__DevNoAuth: ${AUTH_DEV_NO_AUTH:-true}
+      Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-admin@hookline.local}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+      BACKEND_ADMIN_TOKEN: ${BACKEND_ADMIN_TOKEN:-dev-admin-token}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
+      NEXT_PUBLIC_NO_AUTH: ${NEXT_PUBLIC_NO_AUTH:-true}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:
