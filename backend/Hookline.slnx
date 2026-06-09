@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hookline.Host/Hookline.Host.csproj" />
+    <Project Path="src/Hookline.Infrastructure/Hookline.Infrastructure.csproj" />
+    <Project Path="src/Hookline.SharedKernel/Hookline.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Hookline.Modules.Sample/Hookline.Modules.Sample.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj" />
+  </Folder>
+</Solution>

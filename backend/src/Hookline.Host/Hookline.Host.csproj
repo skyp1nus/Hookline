@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hookline.Infrastructure\Hookline.Infrastructure.csproj" />
+    <ProjectReference Include="..\Hookline.SharedKernel\Hookline.SharedKernel.csproj" />
+    <ProjectReference Include="..\Modules\Hookline.Modules.Sample\Hookline.Modules.Sample.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Hangfire.AspNetCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+  </ItemGroup>
+
+</Project>
