@@ -39,15 +39,18 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      # This is the LOCAL DEV stack. Production runs on the shared Hetzner stack (Development
+      # never there) and must supply real secrets — the backend refuses to boot in Production
+      # with DevNoAuth=true or the dev placeholder secrets below.
+      ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=hookline;Username=hookline;Password=${POSTGRES_PASSWORD:-hookline}"
       ConnectionStrings__Redis: "redis:6379"
       TokenEncryption__Key: ${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-change-me}
       Identity__SigningKey: ${IDENTITY_SIGNING_KEY:-dev-identity-signing-key-change-me}
       BackendAuth__AdminToken: ${BACKEND_ADMIN_TOKEN:-dev-admin-token}
-      # Fast-dev escape hatch — runs as a dev admin without the BFF token/identity.
-      Auth__DevNoAuth: ${AUTH_DEV_NO_AUTH:-true}
+      # Fast-dev escape hatch (Development only; forced off + refused at boot in Production).
+      Auth__DevNoAuth: ${AUTH_DEV_NO_AUTH:-false}
       Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-admin@hookline.local}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     ports:
@@ -72,7 +75,7 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
-      NEXT_PUBLIC_NO_AUTH: ${NEXT_PUBLIC_NO_AUTH:-true}
+      NEXT_PUBLIC_NO_AUTH: ${NEXT_PUBLIC_NO_AUTH:-false}
     ports:
       - "3000:3000"
     depends_on:

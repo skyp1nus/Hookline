@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
@@ -33,18 +34,25 @@ namespace Hookline.Infrastructure;
 public static class DependencyInjection
 {
     /// <summary>Registers every shared service the modules and host consume.</summary>
-    public static IServiceCollection AddHooklineInfrastructure(this IServiceCollection services, IConfiguration config)
+    public static IServiceCollection AddHooklineInfrastructure(this IServiceCollection services, IConfiguration config, IHostEnvironment env)
     {
+        GuardSecurityConfig(config, env);
+
         var postgres = config.GetConnectionString("Postgres")
             ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
         var redis = config.GetConnectionString("Redis")
             ?? throw new InvalidOperationException("ConnectionStrings:Redis is required.");
 
+        // DevNoAuth is honored ONLY in Development. Outside it the flag is forced off so a
+        // stray config value can never disable auth (GuardSecurityConfig also refuses to boot
+        // if it is set), and IdentityMiddleware therefore never impersonates a dev admin.
+        var devNoAuth = config.GetValue<bool>("Auth:DevNoAuth") && env.IsDevelopment();
+
         services.Configure<AuthOptions>(o =>
         {
             o.AdminToken = config["BackendAuth:AdminToken"] ?? string.Empty;
             o.IdentitySigningKey = config["Identity:SigningKey"] ?? string.Empty;
-            o.DevNoAuth = config.GetValue<bool>("Auth:DevNoAuth");
+            o.DevNoAuth = devNoAuth;
         });
         services.Configure<BootstrapOptions>(o =>
         {
@@ -99,6 +107,44 @@ public static class DependencyInjection
             .AddCheck<RedisHealthCheck>("redis");
 
         return services;
+    }
+
+    /// <summary>
+    /// Fails the boot in any non-Development environment if auth is weakened: DevNoAuth must
+    /// be off, and the security secrets must not be empty or a known dev placeholder. This is
+    /// the loud backstop behind the silent DevNoAuth gating in <see cref="AddHooklineInfrastructure"/>.
+    /// </summary>
+    private static void GuardSecurityConfig(IConfiguration config, IHostEnvironment env)
+    {
+        if (env.IsDevelopment())
+        {
+            return;
+        }
+
+        if (config.GetValue<bool>("Auth:DevNoAuth"))
+        {
+            throw new InvalidOperationException(
+                $"Auth:DevNoAuth=true is only allowed in Development (environment: {env.EnvironmentName}). Refusing to start.");
+        }
+
+        (string Key, string? Value)[] secrets =
+        [
+            ("TokenEncryption:Key", config["TokenEncryption:Key"]),
+            ("Identity:SigningKey", config["Identity:SigningKey"]),
+            ("BackendAuth:AdminToken", config["BackendAuth:AdminToken"]),
+        ];
+
+        foreach (var (key, value) in secrets)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || value.Contains("change-me", StringComparison.OrdinalIgnoreCase)
+                || value == "dev-admin-token")
+            {
+                throw new InvalidOperationException(
+                    $"{key} is missing or a known dev placeholder — refusing to start outside Development. " +
+                    "Generate a strong value, e.g. `openssl rand -base64 36`.");
+            }
+        }
     }
 
     /// <summary>The single auth gate (BFF token + signed identity). Place early in the pipeline.</summary>

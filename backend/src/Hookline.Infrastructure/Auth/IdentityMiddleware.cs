@@ -10,10 +10,12 @@ namespace Hookline.Infrastructure.Auth;
 
 /// <summary>
 /// The single auth gate. Bypass allowlist = exactly <c>/slack/*</c>, <c>/google/*</c>,
-/// <c>/{provider}/oauth/*</c> and <c>/health</c> (signature/state-verified or public).
+/// <c>/linkedin/*</c> and <c>/health</c> (signature/state-verified or public).
 /// Everything else must present a valid <c>X-Admin-Token</c> (proves the BFF is calling —
 /// it does NOT establish identity), after which the signed identity assertion is verified
 /// to resolve <see cref="ICurrentUser"/>. Endpoints then enforce role policies.
+/// The <c>DevNoAuth</c> escape hatch is bound off outside Development (see
+/// <c>DependencyInjection.GuardSecurityConfig</c>), so this gate is never weakened in prod.
 /// </summary>
 public sealed class IdentityMiddleware(
     RequestDelegate next,

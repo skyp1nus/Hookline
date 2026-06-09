@@ -23,7 +23,7 @@ try
             "[{Timestamp:HH:mm:ss} {Level:u3}] [{module}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}"));
 
     builder.Services.AddProblemDetails();
-    builder.Services.AddHooklineInfrastructure(builder.Configuration);
+    builder.Services.AddHooklineInfrastructure(builder.Configuration, builder.Environment);
 
     // The explicit module list — no reflection scanning. Adding a module is one line here.
     var modules = new List<IModule> { new SampleModule() };
@@ -84,7 +84,11 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Hookline host terminated unexpectedly.");
-    throw;
+    Log.CloseAndFlush();
+    // Exit non-zero immediately. Rethrowing here leaves the faulted async host spinning
+    // (99% CPU, container still "Up") instead of dying, which would let an orchestrator or
+    // healthcheck misread a fail-fast (bad secrets, failed migration, …) as a healthy boot.
+    Environment.Exit(1);
 }
 finally
 {

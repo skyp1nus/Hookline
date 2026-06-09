@@ -1,6 +1,5 @@
 using System.Reflection;
 
-using Hookline.Modules.Sample;
 using Hookline.SharedKernel.Modules;
 
 using NetArchTest.Rules;
@@ -9,18 +8,54 @@ namespace Hookline.ArchitectureTests;
 
 /// <summary>
 /// Enforces the modular-monolith boundaries from the architecture guide. An illegal
-/// reference fails CI rather than slipping in. As real modules land, add their
-/// assemblies to <see cref="ModuleAssemblies"/> and these rules cover them automatically.
+/// reference fails CI rather than slipping in. Module assemblies are reflection-discovered
+/// (see <see cref="DiscoverModuleAssemblies"/>), so every <c>Hookline.Modules.*</c> the host
+/// pulls in is covered automatically — there is no hand-maintained list to forget.
 /// </summary>
 public sealed class ModuleBoundaryTests
 {
     private static readonly Assembly SharedKernel = typeof(IModule).Assembly;
     private static readonly Assembly Infrastructure = typeof(Hookline.Infrastructure.DependencyInjection).Assembly;
 
-    private static readonly Assembly[] ModuleAssemblies =
-    [
-        typeof(SampleModule).Assembly,
-    ];
+    private static readonly Assembly[] ModuleAssemblies = DiscoverModuleAssemblies();
+
+    /// <summary>
+    /// Loads every <c>Hookline.Modules.*</c> assembly sitting next to the test binary (they land
+    /// there transitively through the Host reference) and returns them. A newly registered module
+    /// is picked up with zero edits here.
+    /// </summary>
+    private static Assembly[] DiscoverModuleAssemblies()
+    {
+        var binDir = Path.GetDirectoryName(typeof(ModuleBoundaryTests).Assembly.Location)!;
+        foreach (var dll in Directory.GetFiles(binDir, "Hookline.Modules.*.dll"))
+        {
+            try
+            {
+                Assembly.LoadFrom(dll);
+            }
+            catch (BadImageFormatException)
+            {
+                // Not a managed module assembly — skip.
+            }
+        }
+
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => a.GetName().Name is { } n
+                && n.StartsWith("Hookline.Modules.", StringComparison.Ordinal)
+                && !n.EndsWith(".Tests", StringComparison.Ordinal))
+            .DistinctBy(a => a.GetName().Name)
+            .OrderBy(a => a.GetName().Name)
+            .ToArray();
+    }
+
+    [Fact]
+    public void Module_discovery_covers_the_registered_modules()
+    {
+        // Guards against the rules silently going vacuous (e.g. discovery breaking or a module
+        // dropping out of the build): if nothing is found, the boundary tests below assert nothing.
+        Assert.NotEmpty(ModuleAssemblies);
+        Assert.Contains(ModuleAssemblies, a => a.GetName().Name == "Hookline.Modules.Sample");
+    }
 
     [Fact]
     public void SharedKernel_does_not_depend_on_infrastructure_host_or_modules()

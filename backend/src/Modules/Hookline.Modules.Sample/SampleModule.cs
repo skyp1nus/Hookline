@@ -38,12 +38,11 @@ public sealed class SampleModule : IModule
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup($"/api/{Name}");
-        group.MapGet("/ping", () => Results.Ok(new
+        group.MapGet("/ping", () =>
         {
-            module = "_sample",
-            status = "ok",
-            time = DateTimeOffset.UtcNow,
-        }));
+            var ping = new Domain.SamplePing("ok", DateTimeOffset.UtcNow);
+            return Results.Ok(new { module = Name, status = ping.Status, time = ping.Time });
+        });
     }
 
     public void RegisterJobs(IJobScheduler scheduler) =>
