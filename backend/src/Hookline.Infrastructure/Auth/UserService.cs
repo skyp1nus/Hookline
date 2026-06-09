@@ -74,6 +74,9 @@ public sealed class UserService(
     public Task<bool> OwnerExistsAsync(CancellationToken ct = default) =>
         db.Users.AnyAsync(u => u.Role == UserRole.Owner, ct);
 
+    public Task<User?> FindAsync(Guid id, CancellationToken ct = default) =>
+        db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct);
+
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct = default) =>
         await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).ToListAsync(ct);
 

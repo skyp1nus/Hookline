@@ -32,9 +32,22 @@ public static class AuthEndpoints
 
         group.MapPost("/logout", () => Results.NoContent());
 
-        group.MapGet("/me", (ICurrentUser current) => current.IsAuthenticated
-            ? Results.Ok(new { id = current.UserId, email = current.Email, role = current.Role?.ToString(), isSystem = current.IsSystem })
-            : Results.Problem(statusCode: 401, title: "unauthorized"));
+        group.MapGet("/me", async (ICurrentUser current, UserService users) =>
+        {
+            if (!current.IsAuthenticated)
+            {
+                return Results.Problem(statusCode: 401, title: "unauthorized");
+            }
+
+            // The identity assertion carries id + role; resolve the email from the store.
+            var email = current.Email;
+            if (email is null && current.UserId is { } id && !current.IsSystem)
+            {
+                email = (await users.FindAsync(id))?.Email;
+            }
+
+            return Results.Ok(new { id = current.UserId, email, role = current.Role?.ToString(), isSystem = current.IsSystem });
+        });
 
         group.MapGet("/users", async (ICurrentUser current, UserService users) =>
         {
