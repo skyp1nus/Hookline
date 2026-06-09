@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -50,8 +51,9 @@ export function CommandPalette({
       title="Command palette"
       description="Search pages and actions"
     >
-      <CommandInput placeholder="Search pages and actions…" />
-      <CommandList>
+      <Command>
+        <CommandInput placeholder="Search pages and actions…" />
+        <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
         {PAGE_GROUPS.map((group) => {
           const groupItems = items.filter((i) => i.group === group);
@@ -81,7 +83,8 @@ export function CommandPalette({
             );
           })}
         </CommandGroup>
-      </CommandList>
+        </CommandList>
+      </Command>
     </CommandDialog>
   );
 }
