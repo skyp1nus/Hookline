@@ -2,7 +2,6 @@
 
 import { ArrowDown, ArrowUp, ChevronRight, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 import { Sparkline } from "@/components/charts";
 import { PageHeading } from "@/components/page-heading";
@@ -11,10 +10,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DATA, type StatItem, type YtChannel } from "@/lib/mock-data";
+import { type StatItem, type YtChannel } from "@/lib/mock-data";
 import { formatNumber } from "@/lib/format";
 import { ROUTE_PATH } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useChannels, useCommentStats, useCommentsFeed } from "@/features/comments/hooks";
 
 import { CommentCard } from "./_components/comment-card";
 
@@ -29,15 +29,14 @@ function initials(name: string) {
 
 export default function CommentsDashboardPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+  const { data: stats, isLoading: statsLoading } = useCommentStats();
+  const { data: channelsData, isLoading: channelsLoading } = useChannels();
+  const { data: feed, isLoading: feedLoading } = useCommentsFeed();
 
-  const channels = DATA.ytChannels;
+  const commentStats = stats ?? [];
+  const channels = channelsData ?? [];
   const maxFwd = Math.max(...channels.map((ch) => ch.fwd24), 1);
-  const latest = DATA.commentsFeed.filter((f) => !f.held).slice(0, 3);
+  const latest = (feed ?? []).filter((f) => !f.held).slice(0, 3);
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -54,7 +53,7 @@ export default function CommentsDashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {loading
+        {statsLoading
           ? [0, 1, 2, 3].map((i) => (
               <Card key={i}>
                 <CardContent>
@@ -64,7 +63,7 @@ export default function CommentsDashboardPage() {
                 </CardContent>
               </Card>
             ))
-          : DATA.commentStats.map((s) => <StatCard key={s.id} stat={s} />)}
+          : commentStats.map((s) => <StatCard key={s.id} stat={s} />)}
       </div>
 
       {/* Forwarding by channel + latest forwards */}
@@ -81,7 +80,7 @@ export default function CommentsDashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {loading
+            {channelsLoading
               ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-8 w-full" />)
               : channels.map((ch) => (
                   <ChannelBar key={ch.id} channel={ch} max={maxFwd} />
@@ -101,7 +100,7 @@ export default function CommentsDashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="flex flex-col gap-2.5">
-            {loading
+            {feedLoading
               ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[88px] w-full rounded-xl" />)
               : latest.map((f) => <CommentCard key={f.id} item={f} compact />)}
           </CardContent>

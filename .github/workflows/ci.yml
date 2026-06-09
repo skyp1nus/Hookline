@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, phase-0]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (build + arch/unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet restore Hookline.slnx
+      - run: dotnet build Hookline.slnx -c Release --no-restore
+      # The architecture tests run here — an illegal module reference fails this step
+      # (non-zero exit), which fails the job and blocks the merge.
+      - name: Test (gates the build on architecture violations)
+        run: dotnet test Hookline.slnx -c Release --no-build --verbosity normal
+
+  frontend:
+    name: Frontend (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+  docker:
+    name: Docker images (stub)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "stub — build + push backend/frontend images on main"
+
+  deploy:
+    name: Deploy (stub)
+    needs: [docker]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "stub — scp compose + Caddy snippet, pull images, up -d, reload Caddy"

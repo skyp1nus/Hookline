@@ -1,48 +1,25 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { SlackIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DATA } from "@/lib/mock-data";
+import { useSlackWorkspaces } from "@/features/connections/hooks";
 
 import {
   ConnectCard,
   ConnectionCard,
   ConnectionGrid,
-  type Connection,
 } from "../_components/connection-card";
 
 const SLACK_OAUTH_START = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/slack/oauth/start`;
 
-/** Slack-specific detail beyond DATA.health (which only knows the 2/2 count). */
-const SLACK_WORKSPACES: Connection[] = [
-  {
-    id: "ws-daniels-team",
-    name: "Daniel's Team",
-    handle: "daniels-team.slack.com",
-    meta: "5 channels mapped · OAuth valid",
-  },
-  {
-    id: "ws-side-project",
-    name: "Side Project Co.",
-    handle: "sideproject.slack.com",
-    meta: "2 channels mapped · OAuth valid",
-  },
-];
-
 export default function SlackConnectionsPage() {
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
-
-  const slackHealth = DATA.health.find((h) => h.id === "slack");
+  const { data, isLoading } = useSlackWorkspaces();
+  const workspaces = data ?? [];
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -60,7 +37,7 @@ export default function SlackConnectionsPage() {
       />
 
       <ConnectionGrid>
-        {loading ? (
+        {isLoading ? (
           [0, 1, 2].map((i) => (
             <Card key={i} className="p-0">
               <div className="flex flex-col gap-3.5 p-[18px]">
@@ -76,7 +53,7 @@ export default function SlackConnectionsPage() {
           ))
         ) : (
           <>
-            {SLACK_WORKSPACES.map((ws) => (
+            {workspaces.map((ws) => (
               <ConnectionCard
                 key={ws.id}
                 connection={ws}
@@ -87,8 +64,8 @@ export default function SlackConnectionsPage() {
             <ConnectCard
               title="Connect a workspace"
               subtitle={
-                slackHealth
-                  ? `${slackHealth.ok} connected · authorize another Slack workspace`
+                workspaces.length
+                  ? `${workspaces.length} connected · authorize another Slack workspace`
                   : "Authorize a new Slack workspace"
               }
               href={SLACK_OAUTH_START}

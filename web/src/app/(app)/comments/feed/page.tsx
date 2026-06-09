@@ -7,8 +7,8 @@ import { PageHeading } from "@/components/page-heading";
 import { StatusDot } from "@/components/status";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DATA } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useCommentsFeed } from "@/features/comments/hooks";
 
 import { CommentCard } from "../_components/comment-card";
 
@@ -24,9 +24,12 @@ export default function FeedPage() {
   const [chan, setChan] = useState("all");
   const [flag, setFlag] = useState("all");
 
-  const channels = useMemo(() => [...new Set(DATA.commentsFeed.map((f) => f.ytChannel))], []);
+  const { data } = useCommentsFeed();
+  const feed = useMemo(() => data ?? [], [data]);
 
-  const shown = DATA.commentsFeed.filter((f) => {
+  const channels = useMemo(() => [...new Set(feed.map((f) => f.ytChannel))], [feed]);
+
+  const shown = feed.filter((f) => {
     if (chan !== "all" && f.ytChannel !== chan) return false;
     if (flag === "held" && !f.held) return false;
     if (flag !== "all" && flag !== "held" && !f.flags.includes(flag)) return false;

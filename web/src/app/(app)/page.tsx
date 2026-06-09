@@ -12,7 +12,6 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 import { iconByName } from "@/components/icon";
 import { PageHeading } from "@/components/page-heading";
@@ -21,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  DATA,
   type ActivityItem,
   type HealthItem,
   type Metric,
@@ -29,19 +27,19 @@ import {
 } from "@/lib/mock-data";
 import { ROUTE_PATH, type RouteId } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useOverview } from "@/features/overview/hooks";
 
 const ACTIVITY_ICON = { upload: CloudUpload, comment: MessageSquare, key: Key };
 
 export default function OverviewPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+  const { data, isLoading } = useOverview();
 
   const go = (id: RouteId | string) => router.push(ROUTE_PATH[id as RouteId] ?? "/");
-  const attn = DATA.needsAttention;
+  const attn = data?.needsAttention ?? [];
+  const metrics = data?.metrics ?? [];
+  const activity = data?.activity ?? [];
+  const health = data?.health ?? [];
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -80,7 +78,7 @@ export default function OverviewPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoading ? (
             <div className="space-y-2.5">
               {[0, 1, 2].map((i) => (
                 <Skeleton key={i} className="h-10 w-full" />
@@ -103,7 +101,7 @@ export default function OverviewPage() {
 
       {/* Useful metrics */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {loading
+        {isLoading
           ? [0, 1, 2, 3].map((i) => (
               <Card key={i}>
                 <CardContent>
@@ -113,7 +111,7 @@ export default function OverviewPage() {
                 </CardContent>
               </Card>
             ))
-          : DATA.metrics.map((m) => <MetricCard key={m.id} metric={m} />)}
+          : metrics.map((m) => <MetricCard key={m.id} metric={m} />)}
       </div>
 
       {/* Recent activity + connections health */}
@@ -130,7 +128,7 @@ export default function OverviewPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {isLoading ? (
               <div>
                 {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="flex gap-3 py-3">
@@ -144,7 +142,7 @@ export default function OverviewPage() {
               </div>
             ) : (
               <div>
-                {DATA.activity.map((a, i) => (
+                {activity.map((a, i) => (
                   <div key={a.id} className={cn(i > 0 && "border-t")}>
                     <ActivityRow item={a} />
                   </div>
@@ -160,7 +158,7 @@ export default function OverviewPage() {
             <CardDescription>Slack · Google · API keys</CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {isLoading ? (
               <div className="space-y-3">
                 {[0, 1, 2].map((i) => (
                   <Skeleton key={i} className="h-8 w-full" />
@@ -169,7 +167,7 @@ export default function OverviewPage() {
             ) : (
               <>
                 <div>
-                  {DATA.health.map((h, i) => (
+                  {health.map((h, i) => (
                     <div key={h.id} className={cn(i > 0 && "border-t")}>
                       <HealthRow
                         item={h}

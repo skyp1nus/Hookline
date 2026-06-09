@@ -7,8 +7,9 @@ import { SlackIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DATA, type Job } from "@/lib/mock-data";
+import { type Job } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useJobs } from "@/features/uploads/hooks";
 
 import { JobCard } from "./_components/job-card";
 
@@ -24,8 +25,14 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function QueuePage() {
-  const [jobs, setJobs] = useState<Job[]>(() => DATA.jobs.map((j) => ({ ...j })));
+  const { data } = useJobs();
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<FilterKey>("active");
+
+  // Seed local state from the hook; live tick then mutates this local copy.
+  useEffect(() => {
+    if (data) setJobs(data.map((j) => ({ ...j })));
+  }, [data]);
 
   // Live ticking: advance active jobs every second and transition phases.
   useEffect(() => {

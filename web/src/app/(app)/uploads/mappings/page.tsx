@@ -11,7 +11,7 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
@@ -41,15 +41,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DATA, type Privacy, type UploadMapping } from "@/lib/mock-data";
+import { type Privacy, type UploadMapping } from "@/lib/mock-data";
+import { useUploadMappings } from "@/features/uploads/hooks";
 
 const PRIVACY_OPTIONS: Privacy[] = ["Public", "Unlisted", "Private"];
 
 export default function UploadMappingsPage() {
-  const [rows, setRows] = useState<UploadMapping[]>(() =>
-    DATA.uploadMappings.map((m) => ({ ...m })),
-  );
+  const { data } = useUploadMappings();
+  const [rows, setRows] = useState<UploadMapping[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Seed local state from the hook; privacy/active toggles mutate this local copy.
+  useEffect(() => {
+    if (data) setRows(data.map((m) => ({ ...m })));
+  }, [data]);
 
   const toggle = (id: string) =>
     setRows((p) => p.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));

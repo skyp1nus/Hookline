@@ -27,8 +27,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { DATA, type StatusTone, type TeamMember } from "@/lib/mock-data";
+import { type StatusTone, type TeamMember } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useTeam } from "@/features/system/hooks";
 
 const ROLE_TONE: Record<TeamMember["role"], StatusTone> = {
   Owner: "info",
@@ -75,10 +76,13 @@ function initials(name: string) {
 }
 
 export default function SettingsPage() {
+  const { data } = useTeam();
   const [name, setName] = useState("Daniel Cole");
   const [alerts, setAlerts] = useState<Record<string, boolean>>(
     Object.fromEntries(ALERTS.map((a) => [a.id, a.on])),
   );
+
+  const team = data ?? [];
 
   return (
     <div className="flex max-w-[760px] flex-col gap-[22px]">
@@ -130,12 +134,12 @@ export default function SettingsPage() {
           </Button>
         </div>
         <div className="border-t">
-          {DATA.team.map((m, i) => (
+          {team.map((m, i) => (
             <div
               key={m.id}
               className={cn(
                 "flex items-center gap-3 px-5 py-3",
-                i !== DATA.team.length - 1 && "border-b",
+                i !== team.length - 1 && "border-b",
               )}
             >
               <Avatar className="size-[34px]">

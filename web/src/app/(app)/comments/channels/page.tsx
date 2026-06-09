@@ -8,10 +8,11 @@ import { StatusBadge } from "@/components/status";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DATA, type YtChannel } from "@/lib/mock-data";
+import { type YtChannel } from "@/lib/mock-data";
 import { formatNumber } from "@/lib/format";
 import { ROUTE_PATH } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useChannels } from "@/features/comments/hooks";
 
 function initials(name: string) {
   return name
@@ -23,6 +24,8 @@ function initials(name: string) {
 }
 
 export default function ChannelsPage() {
+  const { data } = useChannels();
+  const channels = data ?? [];
   return (
     <div className="flex flex-col gap-[22px]">
       <PageHeading
@@ -37,7 +40,7 @@ export default function ChannelsPage() {
       />
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
-        {DATA.ytChannels.map((ch) => (
+        {channels.map((ch) => (
           <ChannelCard key={ch.id} channel={ch} />
         ))}
       </div>

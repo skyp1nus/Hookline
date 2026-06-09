@@ -46,7 +46,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDuration, formatMB } from "@/lib/format";
-import { DATA, type Privacy, type UploadHistoryItem } from "@/lib/mock-data";
+import { type Privacy, type UploadHistoryItem } from "@/lib/mock-data";
+import { useUploadHistory } from "@/features/uploads/hooks";
 
 const PRIVACY_ICON: Record<Privacy, ComponentType<{ className?: string }>> = {
   Public: Globe,
@@ -56,16 +57,18 @@ const PRIVACY_ICON: Record<Privacy, ComponentType<{ className?: string }>> = {
 };
 
 export default function HistoryPage() {
+  const { data } = useUploadHistory();
+  const history = data ?? [];
   const [query, setQuery] = useState("");
   const [acct, setAcct] = useState("all");
   const [status, setStatus] = useState("all");
 
   const accounts = useMemo(
-    () => [...new Set(DATA.uploadHistory.map((h) => h.account))],
-    [],
+    () => [...new Set(history.map((h) => h.account))],
+    [history],
   );
 
-  const shown = DATA.uploadHistory.filter((h) => {
+  const shown = history.filter((h) => {
     if (acct !== "all" && h.account !== acct) return false;
     if (status !== "all" && h.status !== status) return false;
     if (query && !h.title.toLowerCase().includes(query.toLowerCase())) return false;

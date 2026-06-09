@@ -11,7 +11,7 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
@@ -34,15 +34,21 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DATA, type CommentMapping } from "@/lib/mock-data";
+import { type CommentMapping } from "@/lib/mock-data";
 import { formatNumber } from "@/lib/format";
+import { useCommentMappings } from "@/features/comments/hooks";
 
 const FREQ_OPTIONS = ["1 min", "5 min", "15 min", "30 min", "1 hr"];
 
 export default function MappingsPage() {
-  const [rows, setRows] = useState<CommentMapping[]>(() => DATA.mappings.map((m) => ({ ...m })));
+  const { data } = useCommentMappings();
+  const [rows, setRows] = useState<CommentMapping[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+
+  useEffect(() => {
+    if (data) setRows(data.map((m) => ({ ...m })));
+  }, [data]);
 
   const toggle = (id: string) =>
     setRows((prev) => prev.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));

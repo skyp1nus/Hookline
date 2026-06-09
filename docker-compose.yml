@@ -67,7 +67,10 @@ services:
     environment:
       BACKEND_URL: http://backend:8080
       BACKEND_ADMIN_TOKEN: ${BACKEND_ADMIN_TOKEN:-dev-admin-token}
+      # Must match the backend's Identity__SigningKey so minted assertions verify.
+      IDENTITY_SIGNING_KEY: ${IDENTITY_SIGNING_KEY:-dev-identity-signing-key-change-me}
       SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
       NEXT_PUBLIC_NO_AUTH: ${NEXT_PUBLIC_NO_AUTH:-true}
     ports:

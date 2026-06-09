@@ -25,8 +25,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeading } from "@/components/page-heading";
-import { DATA, type LogEntry, type LogLevel } from "@/lib/mock-data";
+import { type LogEntry, type LogLevel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useLogs } from "@/features/system/hooks";
 
 type LevelFilter = LogLevel | "all";
 type ToolFilter = LogEntry["tool"] | "all";
@@ -68,12 +69,14 @@ const LEVEL_OPTIONS: { value: LevelFilter; label: string }[] = [
 ];
 
 export default function LogsPage() {
+  const { data } = useLogs();
   const [query, setQuery] = useState("");
   const [tool, setTool] = useState<ToolFilter>("all");
   const [level, setLevel] = useState<LevelFilter>("all");
 
+  const logs = data ?? [];
   const q = query.trim().toLowerCase();
-  const shown = DATA.unifiedLogs.filter((l) => {
+  const shown = logs.filter((l) => {
     if (tool !== "all" && l.tool !== tool) return false;
     if (level !== "all" && l.level !== level) return false;
     if (
@@ -157,7 +160,7 @@ export default function LogsPage() {
 
       {shown.length > 0 && (
         <div className="text-center text-[12.5px] text-muted-foreground">
-          Showing {shown.length} of {DATA.unifiedLogs.length} recent events
+          Showing {shown.length} of {logs.length} recent events
         </div>
       )}
     </div>

@@ -12,7 +12,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { QuotaBar } from "@/components/quota-bar";
 import { StatusBadge } from "@/components/status";
@@ -42,16 +42,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeading } from "@/components/page-heading";
-import { DATA, type ApiKey } from "@/lib/mock-data";
+import { type ApiKey } from "@/lib/mock-data";
 import { usePlatform } from "@/components/platform-context";
+import { useApiKeys } from "@/features/connections/hooks";
 
 type StatusFilter = "all" | "active" | "disabled";
 
 export default function ApiKeysPage() {
   const { platform } = usePlatform();
-  const [keys, setKeys] = useState<ApiKey[]>(() => DATA.apiKeys.map((k) => ({ ...k })));
+  const { data } = useApiKeys();
+  const [keys, setKeys] = useState<ApiKey[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  useEffect(() => {
+    if (data) setKeys(data.map((k) => ({ ...k })));
+  }, [data]);
 
   const toggle = (id: string) =>
     setKeys((prev) =>

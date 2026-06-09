@@ -1,7 +1,6 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { GoogleIcon, YoutubeIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
@@ -9,45 +8,20 @@ import { usePlatform } from "@/components/platform-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useGoogleAccounts } from "@/features/connections/hooks";
 
 import {
   ConnectCard,
   ConnectionCard,
   ConnectionGrid,
-  type Connection,
 } from "../_components/connection-card";
 
 const GOOGLE_OAUTH_START = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/google/oauth/start`;
 
-/** Google accounts authorized to upload to YouTube — richer than DATA.ytChannels. */
-const GOOGLE_ACCOUNTS: Connection[] = [
-  {
-    id: "acct-daniels-channel",
-    name: "Daniel's Channel",
-    handle: "daniel@hookline.io",
-    meta: "2 keys · scope: youtube.upload",
-  },
-  {
-    id: "acct-tutorials",
-    name: "Tutorials by Daniel",
-    handle: "tutorials@hookline.io",
-    meta: "1 key · scope: youtube.upload",
-  },
-  {
-    id: "acct-side-project",
-    name: "Side Project Co.",
-    handle: "team@sideproject.co",
-    meta: "1 key · scope: youtube.upload",
-  },
-];
-
 export default function GoogleConnectionsPage() {
   const { platform } = usePlatform();
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+  const { data, isLoading } = useGoogleAccounts();
+  const accounts = data ?? [];
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -65,7 +39,7 @@ export default function GoogleConnectionsPage() {
       />
 
       <ConnectionGrid>
-        {loading ? (
+        {isLoading ? (
           [0, 1, 2].map((i) => (
             <Card key={i} className="p-0">
               <div className="flex flex-col gap-3.5 p-[18px]">
@@ -81,7 +55,7 @@ export default function GoogleConnectionsPage() {
           ))
         ) : (
           <>
-            {GOOGLE_ACCOUNTS.map((acct) => (
+            {accounts.map((acct) => (
               <ConnectionCard
                 key={acct.id}
                 connection={acct}

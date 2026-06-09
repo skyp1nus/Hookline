@@ -1,8 +1,10 @@
 "use client";
 
 import { ChevronsUpDown, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
+import { useLogout, useMe } from "@/features/auth/hooks";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -19,12 +21,22 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const USER = { name: "Daniel Cole", email: "daniel@hookline.io", initials: "DC" };
-
 export function UserMenu() {
+  const router = useRouter();
   const { isMobile } = useSidebar();
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+
+  const { data: me } = useMe();
+  const logout = useLogout();
+  const email = me?.email ?? "daniel@hookline.io";
+  const name = me?.email ? me.email.split("@")[0] : "Daniel Cole";
+  const initials = (me?.email ?? "DC").slice(0, 2).toUpperCase();
+
+  async function signOut() {
+    await logout.mutateAsync();
+    router.push("/login");
+  }
 
   return (
     <SidebarMenu>
@@ -37,12 +49,12 @@ export function UserMenu() {
             >
               <Avatar className="size-7 rounded-full">
                 <AvatarFallback className="rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
-                  {USER.initials}
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-[13px] font-[540]">{USER.name}</span>
-                <span className="truncate text-[11px] text-muted-foreground">{USER.email}</span>
+                <span className="truncate text-[13px] font-[540]">{name}</span>
+                <span className="truncate text-[11px] text-muted-foreground">{email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-3.5 text-muted-foreground" />
             </SidebarMenuButton>
@@ -53,7 +65,7 @@ export function UserMenu() {
             sideOffset={8}
             className="w-[220px]"
           >
-            <DropdownMenuLabel className="font-[540]">{USER.name}</DropdownMenuLabel>
+            <DropdownMenuLabel className="font-[540]">{name}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <User className="size-4" />
@@ -68,7 +80,7 @@ export function UserMenu() {
               {isDark ? "Light mode" : "Dark mode"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-danger focus:bg-danger-bg focus:text-danger">
+            <DropdownMenuItem className="text-danger focus:bg-danger-bg focus:text-danger" onSelect={signOut}>
               <LogOut className="size-4" />
               Sign out
             </DropdownMenuItem>
