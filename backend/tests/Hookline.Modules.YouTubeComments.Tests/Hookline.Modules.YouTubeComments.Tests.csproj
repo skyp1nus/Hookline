@@ -5,7 +5,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
   </ItemGroup>
 
   <ItemGroup>
@@ -13,10 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Hookline.SharedKernel\Hookline.SharedKernel.csproj" />
-    <ProjectReference Include="..\..\src\Hookline.Infrastructure\Hookline.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\Hookline.Host\Hookline.Host.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Hookline.Modules.YouTubeUploads\Hookline.Modules.YouTubeUploads.csproj" />
     <ProjectReference Include="..\..\src\Modules\Hookline.Modules.YouTubeComments\Hookline.Modules.YouTubeComments.csproj" />
   </ItemGroup>
 

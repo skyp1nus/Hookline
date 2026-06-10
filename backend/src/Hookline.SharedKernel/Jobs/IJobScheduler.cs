@@ -19,4 +19,11 @@ public interface IJobScheduler
 
     /// <summary>Remove a recurring job if it exists.</summary>
     void RemoveRecurring(string id);
+
+    /// <summary>
+    /// The ids of every currently-registered recurring job. Lets a module reconcile its
+    /// dynamic per-entity jobs against its own table on startup — re-adding active ones and
+    /// pruning orphans whose owning entity was removed while the host was down.
+    /// </summary>
+    IReadOnlyList<string> ListRecurring();
 }

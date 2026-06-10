@@ -15,7 +15,7 @@ namespace Hookline.SharedKernel.Modules;
 /// </summary>
 public interface IModule
 {
-    /// <summary>Stable kebab-case identifier, e.g. "comment-bridge". Routes live under <c>/api/{Name}</c>.</summary>
+    /// <summary>Stable kebab-case identifier, e.g. "youtube-comments". Routes live under <c>/api/{Name}</c>.</summary>
     string Name { get; }
 
     /// <summary>Register the module's services into the shared container.</summary>

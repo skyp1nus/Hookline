@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Hookline.Infrastructure\Hookline.Infrastructure.csproj" />
     <ProjectReference Include="..\Hookline.SharedKernel\Hookline.SharedKernel.csproj" />
     <ProjectReference Include="..\Modules\Hookline.Modules.YouTubeUploads\Hookline.Modules.YouTubeUploads.csproj" />
+    <ProjectReference Include="..\Modules\Hookline.Modules.YouTubeComments\Hookline.Modules.YouTubeComments.csproj" />
   </ItemGroup>
 
   <ItemGroup>

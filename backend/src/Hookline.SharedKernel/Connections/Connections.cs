@@ -94,6 +94,36 @@ public interface IGoogleConnections
     Task<bool> DeactivateAsync(Guid accountId, CancellationToken ct = default);
 }
 
+// ── YouTube Data API keys (comment polling — API keys, NOT OAuth) ──
+
+public sealed record YouTubeApiKeySummary(Guid Id, string Name, string KeyHint, bool IsActive, DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Typed accessor over the shared <c>api_keys</c> store for the YouTube Comments module's
+/// quota-rotated polling. Multiple keys per provider; the module ranks them by remaining
+/// Pacific-day quota (tracked module-locally) and resolves the decrypted key at poll time.
+/// </summary>
+public interface IYouTubeApiKeyConnections
+{
+    /// <summary>All keys (active + disabled) for the admin UI.</summary>
+    Task<IReadOnlyList<YouTubeApiKeySummary>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>Only active keys — the rotation candidate set.</summary>
+    Task<IReadOnlyList<YouTubeApiKeySummary>> ListActiveAsync(CancellationToken ct = default);
+
+    /// <summary>The decrypted API key for a given id (resolved at poll time for the lease).</summary>
+    Task<string?> GetApiKeyAsync(Guid keyId, CancellationToken ct = default);
+
+    /// <summary>Insert a new key (encrypts at rest). Returns the new key id.</summary>
+    Task<Guid> CreateAsync(string name, string apiKey, string keyHint, CancellationToken ct = default);
+
+    /// <summary>Enable/disable a key in the rotation pool. No event (the pool simply shrinks/grows).</summary>
+    Task<bool> ToggleAsync(Guid keyId, bool isActive, CancellationToken ct = default);
+
+    /// <summary>Hard-delete a key and publish <see cref="YouTubeApiKeyDisconnected"/>.</summary>
+    Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default);
+}
+
 public sealed record ConnectionSummary(Guid Id, ConnectionType Type, string Label, string Status, string? Detail);
 
 public interface IConnectionCatalog
@@ -106,3 +136,6 @@ public interface IConnectionCatalog
 public sealed record SlackWorkspaceDisconnected(Guid WorkspaceId) : IntegrationEvent;
 
 public sealed record GoogleAccountDisconnected(Guid AccountId) : IntegrationEvent;
+
+/// <summary>A YouTube API key was deleted from the shared pool — modules drop any per-key state (e.g. quota rows).</summary>
+public sealed record YouTubeApiKeyDisconnected(Guid KeyId) : IntegrationEvent;

@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 
 using Hangfire;
+using Hangfire.Storage;
 
 using Hookline.SharedKernel.Jobs;
 
@@ -18,4 +19,10 @@ public sealed class HangfireJobScheduler : IJobScheduler
         BackgroundJob.Enqueue(methodCall);
 
     public void RemoveRecurring(string id) => RecurringJob.RemoveIfExists(id);
+
+    public IReadOnlyList<string> ListRecurring()
+    {
+        using var connection = JobStorage.Current.GetConnection();
+        return connection.GetRecurringJobs().Select(j => j.Id).ToList();
+    }
 }

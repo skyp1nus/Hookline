@@ -55,6 +55,7 @@ public sealed class ModuleBoundaryTests
         // dropping out of the build): if nothing is found, the boundary tests below assert nothing.
         Assert.NotEmpty(ModuleAssemblies);
         Assert.Contains(ModuleAssemblies, a => a.GetName().Name == "Hookline.Modules.YouTubeUploads");
+        Assert.Contains(ModuleAssemblies, a => a.GetName().Name == "Hookline.Modules.YouTubeComments");
     }
 
     [Fact]

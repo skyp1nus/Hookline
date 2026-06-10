@@ -128,6 +128,71 @@ public sealed class GoogleConnections(ConnectionsDbContext db, IEventBus events)
     }
 }
 
+/// <summary>Reads/writes YouTube Data API keys (encrypted by the converter) for quota-rotated polling.</summary>
+public sealed class YouTubeApiKeyConnections(ConnectionsDbContext db, IEventBus events) : IYouTubeApiKeyConnections
+{
+    public async Task<IReadOnlyList<YouTubeApiKeySummary>> ListAsync(CancellationToken ct = default) =>
+        await db.YouTubeApiKeys.AsNoTracking()
+            .OrderBy(k => k.CreatedAt)
+            .Select(k => new YouTubeApiKeySummary(k.Id, k.Name, k.KeyHint, k.IsActive, k.CreatedAt))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<YouTubeApiKeySummary>> ListActiveAsync(CancellationToken ct = default) =>
+        await db.YouTubeApiKeys.AsNoTracking()
+            .Where(k => k.IsActive)
+            .OrderBy(k => k.CreatedAt)
+            .Select(k => new YouTubeApiKeySummary(k.Id, k.Name, k.KeyHint, k.IsActive, k.CreatedAt))
+            .ToListAsync(ct);
+
+    public async Task<string?> GetApiKeyAsync(Guid keyId, CancellationToken ct = default) =>
+        await db.YouTubeApiKeys.AsNoTracking()
+            .Where(k => k.Id == keyId)
+            .Select(k => k.ApiKeyEncrypted) // decrypted on read by the converter
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<Guid> CreateAsync(string name, string apiKey, string keyHint, CancellationToken ct = default)
+    {
+        var key = new YouTubeApiKey
+        {
+            Name = name,
+            ApiKeyEncrypted = apiKey, // encrypted on write by the converter
+            KeyHint = keyHint,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        db.YouTubeApiKeys.Add(key);
+        await db.SaveChangesAsync(ct);
+        return key.Id;
+    }
+
+    public async Task<bool> ToggleAsync(Guid keyId, bool isActive, CancellationToken ct = default)
+    {
+        var key = await db.YouTubeApiKeys.FirstOrDefaultAsync(k => k.Id == keyId, ct);
+        if (key is null)
+        {
+            return false;
+        }
+
+        key.IsActive = isActive;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default)
+    {
+        var key = await db.YouTubeApiKeys.FirstOrDefaultAsync(k => k.Id == keyId, ct);
+        if (key is null)
+        {
+            return false;
+        }
+
+        db.YouTubeApiKeys.Remove(key);
+        await db.SaveChangesAsync(ct);
+        await events.PublishAsync(new YouTubeApiKeyDisconnected(keyId), ct);
+        return true;
+    }
+}
+
 /// <summary>Aggregates every connection into a unified catalog for the UI.</summary>
 public sealed class ConnectionCatalog(ConnectionsDbContext db) : IConnectionCatalog
 {

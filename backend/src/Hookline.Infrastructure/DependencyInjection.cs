@@ -86,9 +86,11 @@ public static class DependencyInjection
 
         services.AddScoped<ISlackConnections, SlackConnections>();
         services.AddScoped<IGoogleConnections, GoogleConnections>();
+        services.AddScoped<IYouTubeApiKeyConnections, YouTubeApiKeyConnections>();
         services.AddScoped<IConnectionCatalog, ConnectionCatalog>();
         services.AddScoped<ISettingsStore, SettingsStore>();
         services.AddScoped<IAuditLog, AuditLog>();
+        services.AddScoped<IAuditLogReader, AuditLogReader>();
         services.AddScoped<UserService>();
         services.AddScoped<OAuthFlowService>();
 

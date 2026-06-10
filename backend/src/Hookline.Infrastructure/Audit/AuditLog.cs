@@ -2,6 +2,9 @@ using Hookline.Infrastructure.Persistence;
 
 using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Auth;
+using Hookline.SharedKernel.Common;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace Hookline.Infrastructure.Audit;
 
@@ -30,5 +33,36 @@ public sealed class AuditLog(SharedDbContext db, ICurrentUser currentUser) : IAu
         });
 
         await db.SaveChangesAsync(ct);
+    }
+}
+
+/// <summary>Pages over the shared <c>audit_logs</c> table, newest first, optionally filtered to one module.</summary>
+public sealed class AuditLogReader(SharedDbContext db) : IAuditLogReader
+{
+    public async Task<PagedResult<AuditLogRecord>> ListAsync(
+        string? module,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var req = new PageRequest(page, pageSize);
+
+        var query = db.AuditLogs.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(module))
+        {
+            query = query.Where(a => a.Module == module);
+        }
+
+        var total = await query.LongCountAsync(ct);
+        var items = await query
+            .OrderByDescending(a => a.Timestamp)
+            .ThenByDescending(a => a.Id)
+            .Skip(req.Skip)
+            .Take(req.SafePageSize)
+            .Select(a => new AuditLogRecord(
+                a.Id, a.Timestamp, a.Actor, a.Role, a.Module, a.Action, a.EntityType, a.EntityId, a.Detail))
+            .ToListAsync(ct);
+
+        return new PagedResult<AuditLogRecord>(items, req.SafePage, req.SafePageSize, total);
     }
 }

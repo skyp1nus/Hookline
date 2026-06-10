@@ -16,7 +16,7 @@ import type { IconType, Platform } from "./platforms";
 /**
  * The single source of truth for navigation. One config drives the sidebar,
  * the breadcrumbs and the ⌘K command palette. Route ids carry the backend
- * module mapping: `ytc-*` → comment-bridge, `ytu-*` → youtube-uploads.
+ * module mapping: `ytc-*` → youtube-comments, `ytu-*` → youtube-uploads.
  */
 export type RouteId =
   | "overview"
@@ -33,7 +33,7 @@ export type RouteId =
   | "logs"
   | "settings";
 
-export type ModuleId = "comment-bridge" | "youtube-uploads" | null;
+export type ModuleId = "youtube-comments" | "youtube-uploads" | null;
 
 type LabelFn = (p: Platform) => string;
 type IconFn = (p: Platform) => IconType;
@@ -82,10 +82,10 @@ const commentsTool: ToolDef = {
   icon: MessageSquare,
   defaultOpen: true,
   children: [
-    { id: "ytc-dashboard", path: "/comments", label: () => "Dashboard", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Dashboard`, module: "comment-bridge" },
-    { id: "ytc-feed", path: "/comments/feed", label: () => "Feed", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Feed`, module: "comment-bridge" },
-    { id: "ytc-channels", path: "/comments/channels", label: (p) => p.channels, icon: (p) => p.icon, cmdIcon: (p) => p.icon, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · ${p.channels}`, module: "comment-bridge" },
-    { id: "ytc-mappings", path: "/comments/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Mappings`, module: "comment-bridge" },
+    { id: "ytc-dashboard", path: "/comments", label: () => "Dashboard", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Dashboard`, module: "youtube-comments" },
+    { id: "ytc-feed", path: "/comments/feed", label: () => "Feed", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Feed`, module: "youtube-comments" },
+    { id: "ytc-channels", path: "/comments/channels", label: (p) => p.channels, icon: (p) => p.icon, cmdIcon: (p) => p.icon, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · ${p.channels}`, module: "youtube-comments" },
+    { id: "ytc-mappings", path: "/comments/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Mappings`, module: "youtube-comments" },
   ],
 };
 
