@@ -19,3 +19,6 @@
 
 # OS
 .DS_Store
+
+# Local prod-profile smoke harness (holds TEST secrets — never commit)
+deploy/local/
