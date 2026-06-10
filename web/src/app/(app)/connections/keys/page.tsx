@@ -1,18 +1,8 @@
 "use client";
 
-import {
-  ExternalLink,
-  Key,
-  MoreHorizontal,
-  Pause,
-  Play,
-  Plus,
-  RefreshCw,
-  RotateCw,
-  Search,
-  Trash2,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Key, MoreHorizontal, Pause, Play, Plus, Search, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { QuotaBar } from "@/components/quota-bar";
 import { StatusBadge } from "@/components/status";
@@ -41,49 +31,56 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeading } from "@/components/page-heading";
-import { type ApiKey } from "@/lib/mock-data";
+import { apiErrorMessage } from "@/lib/api/client";
 import { usePlatform } from "@/components/platform-context";
-import { useApiKeys } from "@/features/connections/hooks";
+import { useApiKeys, useDeleteApiKey, useToggleApiKey } from "@/features/comments/hooks";
+import { type ApiKeyDto } from "@/features/comments/types";
+
+import { AddApiKeyDialog } from "./_components/add-api-key-dialog";
 
 type StatusFilter = "all" | "active" | "disabled";
 
 export default function ApiKeysPage() {
   const { platform } = usePlatform();
   const { data } = useApiKeys();
-  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const toggleKey = useToggleApiKey();
+  const deleteKey = useDeleteApiKey();
+
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<ApiKeyDto | null>(null);
 
-  useEffect(() => {
-    if (data) setKeys(data.map((k) => ({ ...k })));
-  }, [data]);
-
-  const toggle = (id: string) =>
-    setKeys((prev) =>
-      prev.map((k) =>
-        k.id === id ? { ...k, status: k.status === "active" ? "disabled" : "active" } : k,
-      ),
-    );
-  const del = (id: string) => setKeys((prev) => prev.filter((k) => k.id !== id));
+  const keys = useMemo(() => data ?? [], [data]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return keys.filter((k) => {
-      if (statusFilter !== "all" && k.status !== statusFilter) return false;
-      if (q && !(k.name.toLowerCase().includes(q) || k.account.toLowerCase().includes(q)))
-        return false;
+      if (statusFilter === "active" && !k.isActive) return false;
+      if (statusFilter === "disabled" && k.isActive) return false;
+      if (q && !(k.name.toLowerCase().includes(q) || k.keyHint.toLowerCase().includes(q))) return false;
       return true;
     });
   }, [keys, query, statusFilter]);
+
+  async function toggle(k: ApiKeyDto) {
+    try {
+      await toggleKey.mutateAsync(k.id);
+      toast.success(k.isActive ? "Key disabled." : "Key enabled.");
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    }
+  }
 
   return (
     <div className="flex flex-col gap-[22px]">
       <PageHeading
         title={platform.keys}
-        description="Keys used to upload videos. Quota resets daily at 00:00 PT."
+        description="YouTube Data API keys for comment polling. Quota resets daily at 00:00 PT."
         actions={
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAdding(true)}>
             <Plus className="size-3.5" />
             Add API key
           </Button>
@@ -97,15 +94,12 @@ export default function ApiKeysPage() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Search keys or accounts…"
+              placeholder="Search keys…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <Select
-            value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v as StatusFilter)}
-          >
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
             <SelectTrigger size="sm" className="w-[150px]">
               <SelectValue />
             </SelectTrigger>
@@ -115,67 +109,55 @@ export default function ApiKeysPage() {
               <SelectItem value="disabled">Disabled</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex-1" />
-          <Button variant="outline" size="sm">
-            <RefreshCw className="size-3.5" />
-            Validate all
-          </Button>
         </div>
 
         {/* Table */}
         {shown.length === 0 ? (
-          <EmptyState />
+          <EmptyState empty={keys.length === 0} />
         ) : (
-          <Table className="min-w-[760px]">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="px-4 text-xs font-medium text-muted-foreground">
-                  Name
-                </TableHead>
-                <TableHead className="px-4 text-xs font-medium text-muted-foreground">
-                  Key
-                </TableHead>
-                <TableHead className="px-4 text-xs font-medium text-muted-foreground">
-                  Account
-                </TableHead>
-                <TableHead className="w-[240px] px-4 text-xs font-medium text-muted-foreground">
-                  Usage
-                </TableHead>
-                <TableHead className="px-4 text-xs font-medium text-muted-foreground">
-                  Status
-                </TableHead>
-                <TableHead className="px-4 text-xs font-medium text-muted-foreground">
-                  Added
-                </TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Name</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Key</TableHead>
+                <TableHead className="w-[240px] px-4 text-xs font-medium text-muted-foreground">Usage · today</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Status</TableHead>
+                <TableHead className="px-4 text-xs font-medium text-muted-foreground">Added</TableHead>
                 <TableHead className="w-12 px-4" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {shown.map((k) => (
-                <KeyRow key={k.id} apiKey={k} onToggle={() => toggle(k.id)} onDelete={() => del(k.id)} />
+                <KeyRow
+                  key={k.id}
+                  apiKey={k}
+                  onToggle={() => toggle(k)}
+                  onDelete={() => setRemoving(k)}
+                />
               ))}
             </TableBody>
           </Table>
         )}
 
-        {/* Pagination footer */}
         {shown.length > 0 && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-[13px]">
             <span className="text-muted-foreground">
               {shown.length} {shown.length === 1 ? "key" : "keys"}
             </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[12.5px] text-muted-foreground">Page 1 of 1</span>
-              <Button variant="outline" size="sm" disabled>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled>
-                Next
-              </Button>
-            </div>
           </div>
         )}
       </Card>
+
+      <AddApiKeyDialog open={adding} onOpenChange={setAdding} />
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Delete API key?"
+        description={removing ? `Remove ${removing.name} (${removing.keyHint}). This can't be undone.` : undefined}
+        confirmLabel="Delete key"
+        successMessage="Key deleted."
+        onConfirm={() => deleteKey.mutateAsync(removing!.id)}
+      />
     </div>
   );
 }
@@ -185,11 +167,11 @@ function KeyRow({
   onToggle,
   onDelete,
 }: {
-  apiKey: ApiKey;
+  apiKey: ApiKeyDto;
   onToggle: () => void;
   onDelete: () => void;
 }) {
-  const active = apiKey.status === "active";
+  const active = apiKey.isActive;
   return (
     <TableRow>
       <TableCell className="px-4 py-3">
@@ -200,28 +182,21 @@ function KeyRow({
           <div className="text-[13.5px] font-[540]">{apiKey.name}</div>
         </div>
       </TableCell>
-      <TableCell className="mono px-4 py-3 text-xs text-muted-foreground">{apiKey.key}</TableCell>
-      <TableCell className="px-4 py-3 text-[13.5px]">{apiKey.account}</TableCell>
+      <TableCell className="mono px-4 py-3 text-xs text-muted-foreground">{apiKey.keyHint}</TableCell>
       <TableCell className="px-4 py-3">
         {active ? (
-          <QuotaBar used={apiKey.used} total={apiKey.total} className="w-[210px]" />
+          <QuotaBar used={apiKey.todayUnitsUsed} total={apiKey.dailyQuotaLimit} className="w-[210px]" />
         ) : (
           <span className="text-[12.5px] text-muted-foreground">—</span>
         )}
       </TableCell>
       <TableCell className="px-4 py-3">
-        {active ? (
-          <StatusBadge tone="ok" dot>
-            Active
-          </StatusBadge>
-        ) : (
-          <StatusBadge tone="neutral" dot>
-            Disabled
-          </StatusBadge>
-        )}
+        <StatusBadge tone={active ? "ok" : "neutral"} dot>
+          {active ? "Active" : "Disabled"}
+        </StatusBadge>
       </TableCell>
       <TableCell className="mono px-4 py-3 text-[12.5px] text-muted-foreground">
-        {apiKey.added}
+        {new Date(apiKey.createdAt).toLocaleDateString()}
       </TableCell>
       <TableCell className="px-4 py-3 text-right">
         <DropdownMenu>
@@ -230,22 +205,10 @@ function KeyRow({
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem>
-              <RefreshCw className="size-4" />
-              Validate
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <RotateCw className="size-4" />
-              Rotate
-            </DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem onSelect={onToggle}>
               {active ? <Pause className="size-4" /> : <Play className="size-4" />}
               {active ? "Disable" : "Enable"}
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <ExternalLink className="size-4" />
-              Open in Google Cloud
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={onDelete}>
@@ -259,13 +222,13 @@ function KeyRow({
   );
 }
 
-function EmptyState() {
+function EmptyState({ empty }: { empty: boolean }) {
   return (
     <div className="flex flex-col items-center gap-2.5 px-6 py-11 text-muted-foreground">
       <div className="flex size-11 items-center justify-center rounded-[11px] bg-muted">
         <Key className="size-5" />
       </div>
-      <span className="text-[13.5px]">No keys match your search.</span>
+      <span className="text-[13.5px]">{empty ? "No API keys yet. Add one to start polling." : "No keys match your search."}</span>
     </div>
   );
 }

@@ -1,17 +1,28 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge } from "@/components/status";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatNumber } from "@/lib/format";
 import { ROUTE_PATH } from "@/lib/nav";
-import { useChannels } from "@/features/comments/hooks";
+import { useChannels, useDeleteChannel } from "@/features/comments/hooks";
 import { type YouTubeChannelDto } from "@/features/comments/types";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+
+import { AddChannelDialog } from "../_components/add-channel-dialog";
 
 function initials(name: string) {
   return name
@@ -24,14 +35,19 @@ function initials(name: string) {
 
 export default function ChannelsPage() {
   const { data } = useChannels();
+  const deleteChannel = useDeleteChannel();
   const channels = data ?? [];
+
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<YouTubeChannelDto | null>(null);
+
   return (
     <div className="flex flex-col gap-[22px]">
       <PageHeading
         title="Channels"
         description="YouTube channels being watched for new comments."
         actions={
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAdding(true)}>
             <Plus className="size-3.5" />
             Add channel
           </Button>
@@ -45,15 +61,36 @@ export default function ChannelsPage() {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
           {channels.map((ch) => (
-            <ChannelCard key={ch.id} channel={ch} />
+            <ChannelCard key={ch.id} channel={ch} onRemove={() => setRemoving(ch)} />
           ))}
         </div>
       )}
+
+      <AddChannelDialog open={adding} onOpenChange={setAdding} />
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Remove channel?"
+        description={
+          removing
+            ? `Stop tracking ${removing.title}.${removing.mappingCount > 0 ? ` Its ${removing.mappingCount} mapping(s) will be removed too.` : ""} This can't be undone.`
+            : undefined
+        }
+        confirmLabel="Remove channel"
+        successMessage="Channel removed."
+        onConfirm={() => deleteChannel.mutateAsync(removing!.id)}
+      />
     </div>
   );
 }
 
-function ChannelCard({ channel }: { channel: YouTubeChannelDto }) {
+function ChannelCard({
+  channel,
+  onRemove,
+}: {
+  channel: YouTubeChannelDto;
+  onRemove: () => void;
+}) {
   const router = useRouter();
   const idle = channel.mappingCount === 0;
   return (
@@ -90,10 +127,23 @@ function ChannelCard({ channel }: { channel: YouTubeChannelDto }) {
         </div>
       </div>
 
-      <div className="mt-3.5 flex items-center justify-end">
+      <div className="mt-3.5 flex items-center justify-end gap-2">
         <Button variant="outline" size="sm" onClick={() => router.push(ROUTE_PATH["ytc-mappings"])}>
           Manage
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+              <Trash2 className="size-4" />
+              Remove channel
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </Card>
   );

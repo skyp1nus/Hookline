@@ -58,7 +58,7 @@ public sealed class SlackChannelService(
         // Best-effort channel sync immediately after connect, using the token we just obtained.
         await SyncChannelsAsync(workspaceId, oauth.AccessToken, ct);
 
-        await audit.LogAsync("Information", "Slack",
+        await audit.LogAsync(AuditLevel.Information, "Slack",
             $"Connected Slack workspace '{oauth.TeamName}'", "SlackWorkspace", workspaceId.ToString(), ct: ct);
 
         return workspaceId;
@@ -94,7 +94,7 @@ public sealed class SlackChannelService(
         if (!await slackConnections.DeactivateAsync(id, ct))
             return false;
 
-        await audit.LogAsync("Information", "Slack",
+        await audit.LogAsync(AuditLevel.Information, "Slack",
             "Disconnected Slack workspace", "SlackWorkspace", id.ToString(), ct: ct);
         return true;
     }

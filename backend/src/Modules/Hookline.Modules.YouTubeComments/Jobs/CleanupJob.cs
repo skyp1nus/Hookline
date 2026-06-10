@@ -35,7 +35,7 @@ public sealed class CleanupJob(
             .ExecuteDeleteAsync(ct);
 
         await audit.LogAsync(
-            "Information", "Retention",
+            AuditLevel.Information, "Retention",
             $"Retention cleanup: removed {processedDeleted} processed comment(s)",
             details: $"{{\"processedDeleted\":{processedDeleted},\"processedCommentDays\":{_options.ProcessedCommentDays}}}", ct: ct);
 

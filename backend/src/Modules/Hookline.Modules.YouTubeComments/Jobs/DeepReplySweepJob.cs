@@ -71,7 +71,7 @@ public sealed class DeepReplySweepJob(
         var lease = await keys.AcquireAsync(ScanBudget, ct);
         if (lease is null)
         {
-            await audit.LogAsync("Warning", "ReplySweep", "No API key with available quota", "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "ReplySweep", "No API key with available quota", "ChannelMapping", mappingId.ToString(), ct: ct);
             return;
         }
 
@@ -208,11 +208,11 @@ public sealed class DeepReplySweepJob(
             {
                 scheduler.Remove(mappingId);
                 scheduler.RemoveReplySweep(mappingId);
-                await audit.LogAsync("Warning", "ReplySweep", PollCommentsJob.ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
+                await audit.LogAsync(AuditLevel.Warning, "ReplySweep", PollCommentsJob.ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
             }
 
             await audit.LogAsync(
-                "Information", "ReplySweep",
+                AuditLevel.Information, "ReplySweep",
                 $"Reply sweep {ytChannel.Title}: {postedCount} posted, {queuedCount} queued",
                 "ChannelMapping", mappingId.ToString(),
                 details: $"{{\"threads\":{fetch.Threads.Count},\"posted\":{postedCount},\"queued\":{queuedCount},\"unitsUsed\":{unitsUsed}}}", ct: ct);
@@ -224,7 +224,7 @@ public sealed class DeepReplySweepJob(
         catch (GoogleApiException ex) when (ex.HasReason("quotaExceeded"))
         {
             await keys.MarkExhaustedAsync(lease.Id, ct);
-            await audit.LogAsync("Warning", "Quota",
+            await audit.LogAsync(AuditLevel.Warning, "Quota",
                 $"Quota exhausted on key '{lease.Name}' during reply sweep", "ChannelMapping", mappingId.ToString(), ct: ct);
             logger.LogWarning(ex, "Quota exceeded during reply sweep {MappingId}", mappingId);
         }
@@ -233,7 +233,7 @@ public sealed class DeepReplySweepJob(
             // Dead key — disable it so it leaves the rotation pool; the next tick rotates to another key.
             await keys.MarkInvalidAsync(lease.Id, ct);
             var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
-            await audit.LogAsync("Warning", "ApiKey",
+            await audit.LogAsync(AuditLevel.Warning, "ApiKey",
                 $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})",
                 "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             logger.LogWarning(ex, "API key {Key} disabled during reply sweep {MappingId}: {Reason}", lease.Name, mappingId, reason);
@@ -241,14 +241,14 @@ public sealed class DeepReplySweepJob(
         catch (GoogleApiException ex) when (ex.HasReason("commentsDisabled") || (int)ex.HttpStatusCode == 403)
         {
             await keys.RecordUsageAsync(lease.Id, 1, ct);
-            await audit.LogAsync("Warning", "ReplySweep",
+            await audit.LogAsync(AuditLevel.Warning, "ReplySweep",
                 "Comments unavailable for this channel (disabled or forbidden)",
                 "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             logger.LogWarning(ex, "Comments unavailable during reply sweep {MappingId}", mappingId);
         }
         catch (Exception ex)
         {
-            await audit.LogAsync("Error", "ReplySweep", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Error, "ReplySweep", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
             logger.LogError(ex, "Reply sweep failed for mapping {MappingId}", mappingId);
         }
     }

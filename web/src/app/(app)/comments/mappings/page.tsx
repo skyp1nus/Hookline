@@ -2,14 +2,16 @@
 
 import {
   ChevronRight,
-  ExternalLink,
   MoreHorizontal,
+  Pause,
+  Play,
   Plus,
   Search,
   Settings,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
@@ -32,13 +34,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCommentMappings } from "@/features/comments/hooks";
-import { pollingFrequencyLabel } from "@/features/comments/types";
+import { apiErrorMessage } from "@/lib/api/client";
+import { useCommentMappings, useDeleteMapping, useUpdateMapping } from "@/features/comments/hooks";
+import { type MappingDto, pollingFrequencyLabel } from "@/features/comments/types";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+
+import { MappingFormDialog } from "../_components/mapping-form-dialog";
 
 export default function MappingsPage() {
   const { data } = useCommentMappings();
+  const updateMapping = useUpdateMapping();
+  const deleteMapping = useDeleteMapping();
+
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<MappingDto | null>(null);
+  const [deleting, setDeleting] = useState<MappingDto | null>(null);
 
   const rows = data ?? [];
   const shown = rows.filter((m) => {
@@ -55,13 +68,22 @@ export default function MappingsPage() {
     return true;
   });
 
+  async function togglePause(m: MappingDto) {
+    try {
+      await updateMapping.mutateAsync({ id: m.id, body: { isActive: !m.isActive } });
+      toast.success(m.isActive ? "Mapping paused." : "Mapping resumed.");
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    }
+  }
+
   return (
     <div className="flex flex-col gap-[22px]">
       <PageHeading
         title="Mappings"
         description="Forward new comments from a YouTube channel into a Slack channel."
         actions={
-          <Button size="sm">
+          <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-3.5" />
             Add mapping
           </Button>
@@ -105,9 +127,6 @@ export default function MappingsPage() {
               <TableHead className="w-[130px] px-4 text-[12px] font-medium text-muted-foreground">
                 Polling
               </TableHead>
-              <TableHead className="px-4 text-right text-[12px] font-medium text-muted-foreground">
-                Fwd · 24h
-              </TableHead>
               <TableHead className="px-4 text-center text-[12px] font-medium text-muted-foreground">
                 Status
               </TableHead>
@@ -117,8 +136,8 @@ export default function MappingsPage() {
           <TableBody>
             {shown.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="px-4 py-11 text-center text-[13.5px] text-muted-foreground">
-                  No mappings match your search.
+                <TableCell colSpan={6} className="px-4 py-11 text-center text-[13.5px] text-muted-foreground">
+                  {rows.length === 0 ? "No mappings yet. Add one to start forwarding comments." : "No mappings match your search."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -148,9 +167,6 @@ export default function MappingsPage() {
                   <TableCell className="px-4 py-3.5">
                     <span className="text-[12.5px]">{pollingFrequencyLabel(m.frequency)}</span>
                   </TableCell>
-                  <TableCell className="px-4 py-3.5 text-right">
-                    <span className="mono text-[13px] text-muted-foreground">—</span>
-                  </TableCell>
                   <TableCell className="px-4 py-3.5 text-center">
                     <StatusBadge tone={m.isActive ? "ok" : "neutral"} dot>
                       {m.isActive ? "Active" : "Paused"}
@@ -164,16 +180,16 @@ export default function MappingsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setEditing(m)}>
                           <Settings className="size-4" />
                           Edit mapping
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <ExternalLink className="size-4" />
-                          Open Slack channel
+                        <DropdownMenuItem onSelect={() => togglePause(m)}>
+                          {m.isActive ? <Pause className="size-4" /> : <Play className="size-4" />}
+                          {m.isActive ? "Pause" : "Resume"}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive">
+                        <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(m)}>
                           <Trash2 className="size-4" />
                           Delete
                         </DropdownMenuItem>
@@ -186,20 +202,35 @@ export default function MappingsPage() {
           </TableBody>
         </Table>
 
-        {/* Pagination footer */}
+        {/* Footer */}
         <div className="flex items-center justify-between border-t px-4 py-3 text-[13px]">
           <span className="text-muted-foreground">{shown.length} mappings</span>
-          <div className="flex items-center gap-[7px]">
-            <span className="text-[12.5px] text-muted-foreground">Page 1 of 1</span>
-            <Button variant="outline" size="sm" disabled className="opacity-50">
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled className="opacity-50">
-              Next
-            </Button>
-          </div>
         </div>
       </Card>
+
+      {/* Create */}
+      <MappingFormDialog open={creating} onOpenChange={setCreating} />
+      {/* Edit (keyed so the form reseeds per mapping) */}
+      <MappingFormDialog
+        key={editing?.id ?? "edit"}
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+        mapping={editing ?? undefined}
+      />
+      {/* Delete */}
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete mapping?"
+        description={
+          deleting
+            ? `Stop forwarding ${deleting.youTubeChannelTitle} → ${deleting.slackChannelName}. This can't be undone.`
+            : undefined
+        }
+        confirmLabel="Delete mapping"
+        successMessage="Mapping deleted."
+        onConfirm={() => deleteMapping.mutateAsync(deleting!.id)}
+      />
     </div>
   );
 }

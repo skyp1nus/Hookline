@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace Hookline.Modules.YouTubeComments;
 
 /// <summary>
@@ -19,8 +21,17 @@ public sealed class YouTubeCommentsOptions
     public string AdminPanelUrl { get; set; } = "http://localhost:3000";
 
     /// <summary>Uniform daily YouTube Data API unit ceiling per key (Google default 10000/key/day).
-    /// All keys share this limit (the shared key record carries no per-key quota field).</summary>
+    /// All keys share this limit (the shared key record carries no per-key quota field). Validated on
+    /// startup to be within <see cref="MinDailyQuotaUnits"/>..<see cref="MaxDailyQuotaUnits"/> — a
+    /// non-positive ceiling would silently break the dashboard quota math.</summary>
     public int DailyQuotaUnits { get; set; } = 10000;
+
+    /// <summary>Lower bound for <see cref="DailyQuotaUnits"/> (a ceiling must be at least one unit).</summary>
+    public const int MinDailyQuotaUnits = 1;
+
+    /// <summary>Upper bound for <see cref="DailyQuotaUnits"/> — generous headroom over Google's default
+    /// for an approved quota increase, while still catching an absurd typo.</summary>
+    public const int MaxDailyQuotaUnits = 50_000_000;
 
     public DeliverySettings Delivery { get; set; } = new();
     public RetentionSettings Retention { get; set; } = new();
@@ -60,5 +71,28 @@ public sealed class YouTubeCommentsOptions
 
         /// <summary>Cron cadence for the cleanup job. Default: daily at 03:00 UTC.</summary>
         public string Cron { get; set; } = "0 3 * * *";
+    }
+}
+
+/// <summary>
+/// Validates <see cref="YouTubeCommentsOptions"/> on startup (wired with <c>ValidateOnStart</c>). Today it
+/// guards <see cref="YouTubeCommentsOptions.DailyQuotaUnits"/>: a non-positive ceiling would make the
+/// per-key quota math (capacity = active-keys × ceiling) and the dashboard meter meaningless, so a
+/// misconfiguration fails the host fast instead of silently producing a broken meter.
+/// </summary>
+public sealed class YouTubeCommentsOptionsValidator : IValidateOptions<YouTubeCommentsOptions>
+{
+    public ValidateOptionsResult Validate(string? name, YouTubeCommentsOptions options)
+    {
+        if (options.DailyQuotaUnits is < YouTubeCommentsOptions.MinDailyQuotaUnits
+                                      or > YouTubeCommentsOptions.MaxDailyQuotaUnits)
+        {
+            return ValidateOptionsResult.Fail(
+                $"YouTubeComments:DailyQuotaUnits must be between {YouTubeCommentsOptions.MinDailyQuotaUnits} and " +
+                $"{YouTubeCommentsOptions.MaxDailyQuotaUnits:N0} (daily YouTube Data API units per key); " +
+                $"got {options.DailyQuotaUnits}.");
+        }
+
+        return ValidateOptionsResult.Success;
     }
 }

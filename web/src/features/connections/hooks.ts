@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { mockFetch } from "@/lib/mock-fetch";
-import { DATA, type ApiKey } from "@/lib/mock-data";
 
 /** A connected Slack workspace — shaped for the connection card. */
 export interface SlackWorkspace {
@@ -58,14 +57,6 @@ const GOOGLE_ACCOUNTS: GoogleAccount[] = [
     meta: "1 key · scope: youtube.upload",
   },
 ];
-
-export function useApiKeys() {
-  return useQuery({
-    queryKey: ["connections", "keys"],
-    // Phase 1: queryFn = () => api.get<ApiKey[]>("/connections/keys")
-    queryFn: () => mockFetch<ApiKey[]>(DATA.apiKeys),
-  });
-}
 
 export function useSlackWorkspaces() {
   return useQuery({

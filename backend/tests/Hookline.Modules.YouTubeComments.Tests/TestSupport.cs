@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 
 using Hookline.Modules.YouTubeComments.Infrastructure;
+using Hookline.SharedKernel.Audit;
+using Hookline.SharedKernel.Common;
 using Hookline.SharedKernel.Connections;
 using Hookline.SharedKernel.Jobs;
 
@@ -79,4 +81,79 @@ internal sealed class FakeKeyConnections : IYouTubeApiKeyConnections
 
     public Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default) =>
         Task.FromResult(_keys.RemoveAll(k => k.Summary.Id == keyId) > 0);
+}
+
+/// <summary>In-memory <see cref="ISlackConnections"/>; only the bits the module services read are real.</summary>
+internal sealed class FakeSlackConnections : ISlackConnections
+{
+    private readonly List<SlackWorkspaceSummary> _workspaces = new();
+
+    public Guid Seed(string teamName, bool active = true)
+    {
+        var id = Guid.NewGuid();
+        _workspaces.Add(new SlackWorkspaceSummary(id, $"T-{id:N}", teamName, active));
+        return id;
+    }
+
+    public Task<IReadOnlyList<SlackWorkspaceSummary>> ListAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SlackWorkspaceSummary>>(_workspaces.ToList());
+
+    public Task<string?> GetBotTokenAsync(Guid workspaceId, CancellationToken ct = default) =>
+        Task.FromResult<string?>(_workspaces.Any(w => w.Id == workspaceId) ? "xoxb-test" : null);
+
+    public Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) =>
+        Task.FromResult<string?>("xoxb-test");
+
+    public Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default) =>
+        Task.FromResult(_workspaces.FirstOrDefault(w => w.TeamId == teamId));
+
+    public Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default) =>
+        Task.FromResult(Seed(write.TeamName));
+
+    public Task<bool> DeactivateAsync(Guid workspaceId, CancellationToken ct = default) =>
+        Task.FromResult(_workspaces.RemoveAll(w => w.Id == workspaceId) > 0);
+}
+
+/// <summary>Records every entry the module writes through <see cref="ICommentsAudit"/> for assertions.</summary>
+internal sealed class RecordingCommentsAudit : ICommentsAudit
+{
+    public readonly record struct Entry(
+        string Level, string Category, string Message, string? EntityType, string? EntityId, string? Details);
+
+    public List<Entry> Entries { get; } = new();
+
+    public Task LogAsync(
+        string level, string category, string message,
+        string? entityType = null, string? entityId = null, string? actor = null, string? details = null,
+        CancellationToken ct = default)
+    {
+        Entries.Add(new Entry(level, category, message, entityType, entityId, details));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Records what the shared <see cref="IAuditLog"/> would persist (so the folded-level prefix is visible).</summary>
+internal sealed class RecordingAuditLog : IAuditLog
+{
+    public readonly record struct Row(string Action, string? Module, string? EntityType, string? EntityId, string? Detail);
+
+    public List<Row> Rows { get; } = new();
+
+    public Task WriteAsync(
+        string action, string? module = null, string? entityType = null, string? entityId = null,
+        string? detail = null, CancellationToken ct = default)
+    {
+        Rows.Add(new Row(action, module, entityType, entityId, detail));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Stub <see cref="IAuditLogReader"/> returning a fixed error count; the dashboard quota math doesn't read audit.</summary>
+internal sealed class StubAuditLogReader(int errorCount = 0) : IAuditLogReader
+{
+    public Task<PagedResult<AuditLogRecord>> ListAsync(string? module, int page, int pageSize, CancellationToken ct = default) =>
+        Task.FromResult(PagedResult<AuditLogRecord>.Empty(page, pageSize));
+
+    public Task<int> CountSinceAsync(string? module, DateTimeOffset since, string? detailPrefix = null, CancellationToken ct = default) =>
+        Task.FromResult(errorCount);
 }

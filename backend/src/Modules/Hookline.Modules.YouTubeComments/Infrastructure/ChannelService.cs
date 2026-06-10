@@ -85,7 +85,7 @@ public sealed class ChannelService(
         db.YouTubeChannels.Add(entity);
         await db.SaveChangesAsync(ct);
 
-        await audit.LogAsync("Information", "Channel",
+        await audit.LogAsync(AuditLevel.Information, "Channel",
             $"Added YouTube channel '{entity.Title}'", "YouTubeChannel", entity.Id.ToString(), ct: ct);
 
         return new YouTubeChannelDto(entity.Id, entity.YouTubeChannelId, entity.Title, entity.ThumbnailUrl, entity.Handle, entity.AddedAt, 0);
@@ -101,7 +101,7 @@ public sealed class ChannelService(
         db.YouTubeChannels.Remove(entity);
         await db.SaveChangesAsync(ct);
 
-        await audit.LogAsync("Information", "Channel",
+        await audit.LogAsync(AuditLevel.Information, "Channel",
             $"Deleted YouTube channel '{entity.Title}'", "YouTubeChannel", id.ToString(), ct: ct);
         return true;
     }

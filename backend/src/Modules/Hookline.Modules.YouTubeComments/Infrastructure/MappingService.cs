@@ -142,7 +142,7 @@ public sealed class MappingService(
             ReconcileReplySweep(entity);
         }
 
-        await audit.LogAsync("Information", "Mapping",
+        await audit.LogAsync(AuditLevel.Information, "Mapping",
             $"Created mapping ({entity.Frequency}, replies: {entity.IncludeReplies})",
             "ChannelMapping", entity.Id.ToString(), ct: ct);
 
@@ -184,7 +184,7 @@ public sealed class MappingService(
             scheduler.RemoveReplySweep(entity.Id);
         }
 
-        await audit.LogAsync("Information", "Mapping",
+        await audit.LogAsync(AuditLevel.Information, "Mapping",
             $"Updated mapping (active: {entity.IsActive}, {entity.Frequency}, replies: {entity.IncludeReplies})",
             "ChannelMapping", entity.Id.ToString(), ct: ct);
 
@@ -204,7 +204,7 @@ public sealed class MappingService(
         scheduler.Remove(id);
         scheduler.RemoveReplySweep(id);
 
-        await audit.LogAsync("Information", "Mapping", "Deleted mapping", "ChannelMapping", id.ToString(), ct: ct);
+        await audit.LogAsync(AuditLevel.Information, "Mapping", "Deleted mapping", "ChannelMapping", id.ToString(), ct: ct);
         return true;
     }
 

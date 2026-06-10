@@ -73,7 +73,7 @@ public sealed class ApiKeyService(
         var hint = Mask(apiKey);
         var id = await keys.CreateAsync(name, apiKey, hint, ct);
 
-        await audit.LogAsync("Information", "ApiKey",
+        await audit.LogAsync(AuditLevel.Information, "ApiKey",
             $"Added YouTube API key '{name}' ({hint})", "YouTubeApiKey", id.ToString(), ct: ct);
 
         // A freshly created key has no usage yet for today.
@@ -90,7 +90,7 @@ public sealed class ApiKeyService(
         if (!await keys.DeleteAsync(id, ct))
             return false;
 
-        await audit.LogAsync("Information", "ApiKey",
+        await audit.LogAsync(AuditLevel.Information, "ApiKey",
             $"Deleted YouTube API key '{summary.Name}'", "YouTubeApiKey", id.ToString(), ct: ct);
         return true;
     }
@@ -105,7 +105,7 @@ public sealed class ApiKeyService(
         var newActive = !summary.IsActive;
         await keys.ToggleAsync(id, newActive, ct);
 
-        await audit.LogAsync("Information", "ApiKey",
+        await audit.LogAsync(AuditLevel.Information, "ApiKey",
             $"{(newActive ? "Enabled" : "Disabled")} YouTube API key '{summary.Name}'",
             "YouTubeApiKey", id.ToString(), ct: ct);
 

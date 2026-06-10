@@ -74,7 +74,7 @@ public sealed class DeliveryRetryJob(
             var notification = DeserializePayload(row);
             if (notification is null)
             {
-                await audit.LogAsync("Error", "Delivery",
+                await audit.LogAsync(AuditLevel.Error, "Delivery",
                     "Dropped a pending delivery with an unreadable payload", "ChannelMapping", row.MappingId.ToString(), ct: ct);
                 db.PendingDeliveries.Remove(row);
                 deadLettered++;
@@ -110,7 +110,7 @@ public sealed class DeliveryRetryJob(
                 row.LastError = $"Slack post retry {row.AttemptCount} failed";
                 if (row.AttemptCount >= _options.MaxAttempts)
                 {
-                    await audit.LogAsync("Error", "Delivery",
+                    await audit.LogAsync(AuditLevel.Error, "Delivery",
                         $"Gave up delivering comment after {row.AttemptCount} attempts",
                         "ChannelMapping", row.MappingId.ToString(),
                         details: $"{{\"commentId\":\"{row.CommentId}\"}}", ct: ct);
@@ -198,7 +198,7 @@ public sealed class DeliveryRetryJob(
         }
         scheduler.Remove(mappingId);
         scheduler.RemoveReplySweep(mappingId);
-        await audit.LogAsync("Warning", "Delivery", PollCommentsJob.ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
+        await audit.LogAsync(AuditLevel.Warning, "Delivery", PollCommentsJob.ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
         logger.LogWarning("Mapping {MappingId} deactivated during delivery retry: Slack channel gone", mappingId);
     }
 

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Hookline.Modules.YouTubeComments;
 
@@ -37,7 +38,13 @@ public sealed class YouTubeCommentsModule : IModule
         var postgres = config.GetConnectionString("Postgres")
             ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
 
-        services.Configure<YouTubeCommentsOptions>(config.GetSection(YouTubeCommentsOptions.Section));
+        // Bind + validate on startup so a misconfigured quota ceiling fails fast instead of silently
+        // breaking the quota math (a non-positive limit makes capacity/percent meaningless). The
+        // validator (YouTubeCommentsOptionsValidator) is a dedicated, unit-testable type.
+        services.AddOptions<YouTubeCommentsOptions>()
+            .Bind(config.GetSection(YouTubeCommentsOptions.Section))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<YouTubeCommentsOptions>, YouTubeCommentsOptionsValidator>();
 
         services.AddDbContext<YouTubeCommentsDbContext>(options => options
             .UseNpgsql(postgres, npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history", YouTubeCommentsDbContext.SchemaName))

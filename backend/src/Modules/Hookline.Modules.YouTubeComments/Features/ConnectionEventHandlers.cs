@@ -42,7 +42,7 @@ public sealed class SlackWorkspaceDisconnectedHandler(
             await db.SaveChangesAsync(ct);
         }
 
-        await audit.LogAsync("Warning", "Slack",
+        await audit.LogAsync(AuditLevel.Warning, "Slack",
             "Slack workspace disconnected", "SlackWorkspace", @event.WorkspaceId.ToString(),
             details: $"deactivated {mappings.Count} mapping(s)", ct: ct);
         logger.LogInformation("Slack workspace {Workspace} disconnected: deactivated {Mappings} mapping(s)",
@@ -67,7 +67,7 @@ public sealed class YouTubeApiKeyDisconnectedHandler(
             .Where(q => q.ApiKeyId == @event.KeyId)
             .ExecuteDeleteAsync(ct);
 
-        await audit.LogAsync("Information", "Quota",
+        await audit.LogAsync(AuditLevel.Information, "Quota",
             $"API key disconnected: pruned {pruned} quota row(s)", "YouTubeApiKey", @event.KeyId.ToString(), ct: ct);
         logger.LogInformation("YouTube API key {Key} disconnected: pruned {Pruned} quota row(s)", @event.KeyId, pruned);
     }

@@ -89,7 +89,7 @@ public sealed class PollCommentsJob(
         if (lease is null)
         {
             const string msg = "No API key with available quota";
-            await audit.LogAsync("Warning", "Polling", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
             mapping.LastError = msg;
             await db.SaveChangesAsync(ct);
             logger.LogWarning("Poll for {MappingId} skipped: {Message}", mappingId, msg);
@@ -212,12 +212,12 @@ public sealed class PollCommentsJob(
             {
                 scheduler.Remove(mappingId);
                 scheduler.RemoveReplySweep(mappingId);
-                await audit.LogAsync("Warning", "Polling", ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
+                await audit.LogAsync(AuditLevel.Warning, "Polling", ChannelGoneError, "ChannelMapping", mappingId.ToString(), ct: ct);
                 logger.LogWarning("Mapping {MappingId} deactivated: Slack channel gone", mappingId);
             }
 
             await audit.LogAsync(
-                "Information", "Polling",
+                AuditLevel.Information, "Polling",
                 $"Polled {channelLabel}: {postedCount} posted, {queuedCount} queued",
                 "ChannelMapping", mappingId.ToString(),
                 details: $"{{\"fetched\":{fetch.Comments.Count},\"new\":{newComments.Count},\"posted\":{postedCount}," +
@@ -232,7 +232,7 @@ public sealed class PollCommentsJob(
             // The key is out of quota server-side. Pin it exhausted so the next tick rotates. Don't crash.
             await keys.MarkExhaustedAsync(lease.Id, ct);
             var msg = $"Quota exhausted on key '{lease.Name}'; will rotate on next run";
-            await audit.LogAsync("Warning", "Quota", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "Quota", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);
             logger.LogWarning(ex, "Quota exceeded for mapping {MappingId} on key {Key}", mappingId, lease.Name);
         }
@@ -244,7 +244,7 @@ public sealed class PollCommentsJob(
             await keys.MarkInvalidAsync(lease.Id, ct);
             var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
             var msg = $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})";
-            await audit.LogAsync("Warning", "ApiKey", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "ApiKey", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);
             logger.LogWarning(ex, "API key {Key} disabled for mapping {MappingId}: {Reason}", lease.Name, mappingId, reason);
         }
@@ -252,7 +252,7 @@ public sealed class PollCommentsJob(
         {
             await keys.RecordUsageAsync(lease.Id, 1, ct);
             var msg = "Comments unavailable for this channel (disabled or forbidden)";
-            await audit.LogAsync("Warning", "Polling", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);
             logger.LogWarning(ex, "Comments unavailable for mapping {MappingId}", mappingId);
         }
@@ -260,7 +260,7 @@ public sealed class PollCommentsJob(
         {
             // Anything else: log + audit + stamp LastError, then swallow. The next scheduled tick is a
             // natural retry; rethrowing would trigger Hangfire's retry queue and risk noise.
-            await audit.LogAsync("Error", "Polling", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Error, "Polling", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
             await SetLastErrorAsync(mapping, ex.Message, ct);
             logger.LogError(ex, "Poll failed for mapping {MappingId}", mappingId);
         }
