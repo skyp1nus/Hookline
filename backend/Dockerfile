@@ -8,6 +8,7 @@ COPY src/Hookline.Host/Hookline.Host.csproj src/Hookline.Host/
 COPY src/Hookline.SharedKernel/Hookline.SharedKernel.csproj src/Hookline.SharedKernel/
 COPY src/Hookline.Infrastructure/Hookline.Infrastructure.csproj src/Hookline.Infrastructure/
 COPY src/Modules/Hookline.Modules.YouTubeUploads/Hookline.Modules.YouTubeUploads.csproj src/Modules/Hookline.Modules.YouTubeUploads/
+COPY src/Modules/Hookline.Modules.YouTubeComments/Hookline.Modules.YouTubeComments.csproj src/Modules/Hookline.Modules.YouTubeComments/
 COPY tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj tests/Hookline.ArchitectureTests/
 RUN dotnet restore src/Hookline.Host/Hookline.Host.csproj
 
