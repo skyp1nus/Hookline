@@ -4,7 +4,7 @@
 
 # DanielHub — architecture guide
 
-> A living reference for building DanielHub as a **modular monolith** that grows tool-by-tool. Today: Comment Bridge + SlackTube. Tomorrow: LinkedIn, a public Website, and more. The whole point of this architecture is that adding the *next* tool is cheap and never touches the previous ones.
+> A living reference for building DanielHub as a **modular monolith** that grows tool-by-tool. Today: **YouTube Uploads** (built on the shared kernel — Phase 1). Next: **YouTube Comments** (Phase 2). Tomorrow: LinkedIn, a public Website, and more. The whole point of this architecture is that adding the *next* tool is cheap and never touches the previous ones.
 
 ---
 
@@ -62,26 +62,27 @@ backend/
       Settings/  Jobs/  Logging/  Messaging/
 
     Modules/
-      CommentBridge/                   # DanielHub.Modules.CommentBridge.csproj
-        CommentBridgeModule.cs         # implements IModule
-        Domain/                        # entities, enums
-        Features/                      # ApiKeys, Channels, Mappings, Dashboard, Logs (handlers + DTOs)
-        Infrastructure/                # CommentBridgeDbContext (schema: comment_bridge), Migrations/, YouTube client
-        Endpoints/                     # mapped under /api/comment-bridge
-        Jobs/                          # polling job + dynamic scheduler
-      SlackTube/                       # DanielHub.Modules.SlackTube.csproj
-        SlackTubeModule.cs
+      YouTubeUploads/                  # DanielHub.Modules.YouTubeUploads.csproj   (BUILT — Phase 1)
+        YouTubeUploadsModule.cs        # implements IModule; runs on the shared kernel
         Domain/                        # UploadJob, JobState machine, ...
         Features/                      # ingest, status, upload orchestration
-        Infrastructure/                # SlackTubeDbContext (schema: slacktube), Migrations/, Google (Drive + YouTube)
-        Endpoints/                     # mapped under /api/slacktube
+        Infrastructure/                # YouTubeUploadsDbContext (schema: youtube_uploads), Migrations/, Google (Drive + YouTube)
+        Endpoints/                     # mapped under /api/youtube-uploads
         Jobs/                          # ingest + upload handlers
+      YouTubeComments/                 # DanielHub.Modules.YouTubeComments.csproj  (Phase 2 — planned)
+        YouTubeCommentsModule.cs       # implements IModule
+        Domain/                        # entities, enums
+        Features/                      # ApiKeys, Channels, Mappings, Dashboard, Logs (handlers + DTOs)
+        Infrastructure/                # YouTubeCommentsDbContext (schema: youtube_comments), Migrations/, YouTube client
+        Endpoints/                     # mapped under /api/youtube-comments
+        Jobs/                          # polling job + dynamic scheduler
       # future: LinkedIn/ , Website/ , ...
 
   tests/
     DanielHub.ArchitectureTests/       # enforces module boundaries (fails CI on illegal references)
-    CommentBridge.Tests/
-    SlackTube.Tests/
+    DanielHub.Infrastructure.Tests/    # shared-kernel impls (e.g. the AES-GCM secret protector)
+    YouTubeUploads.Tests/
+    YouTubeComments.Tests/
 ```
 
 **Reference rules (enforced by tests):**
@@ -91,7 +92,7 @@ backend/
 - **No module ever references another module.**
 - `Domain` folders have no infrastructure dependencies.
 
-This is actually *simpler* than Comment Bridge's current 5-project clean architecture: those five projects collapse into **one** module project with internal `Domain/Features/Infrastructure/Endpoints` folders. Clean-architecture layering still exists — it's just folders inside the module rather than separate solution projects. The win is that cross-*module* isolation is now real (assembly-level), which matters far more once there are 5–10 modules.
+This is actually *simpler* than the legacy Comment Bridge repo's 5-project clean architecture: those five projects collapse into **one** module project with internal `Domain/Features/Infrastructure/Endpoints` folders. Clean-architecture layering still exists — it's just folders inside the module rather than separate solution projects. The win is that cross-*module* isolation is now real (assembly-level), which matters far more once there are 5–10 modules.
 
 ---
 
@@ -126,7 +127,7 @@ Adding a module to the system is one line in that explicit list.
 A module never references another module's assembly. Cross-module interaction, in strict order of preference:
 
 1. **Nothing.** Independent modules are the goal.
-2. **Shared-kernel services.** Both Comment Bridge and SlackTube consume `ISlackConnections` — that is module→shared, not module→module. Fine.
+2. **Shared-kernel services.** Both YouTube Comments and YouTube Uploads consume `ISlackConnections` — that is module→shared, not module→module. Fine.
 3. **In-process integration events** via `IEventBus`. Example: Connections publishes `SlackWorkspaceDisconnected(workspaceId)`; any module holding mappings to that workspace reacts and deactivates them. Events carry only IDs/primitives and live in `SharedKernel`.
 4. **A public contract interface in `SharedKernel`** for a direct synchronous call — last resort, since it couples lifecycles.
 
@@ -138,7 +139,7 @@ Boundaries are enforced by `DanielHub.ArchitectureTests` (NetArchTest or ArchUni
 
 This is the single most valuable shared part. **Connect an external account once; consume it from any module.** Everything else is plumbing around this.
 
-**Connection types today:** Slack workspace (OAuth v2 bot token), Google account (OAuth refresh token → YouTube + Drive scopes), YouTube Data API key (Comment Bridge polling). **Future:** LinkedIn (OAuth2), a generic OAuth2 connection, and whatever a "Website" module needs (hosting/CMS credentials, or nothing).
+**Connection types today:** Slack workspace (OAuth v2 bot token), Google account (OAuth refresh token → YouTube + Drive scopes), YouTube Data API key (YouTube Comments polling). **Future:** LinkedIn (OAuth2), a generic OAuth2 connection, and whatever a "Website" module needs (hosting/CMS credentials, or nothing).
 
 **Responsibilities:** OAuth start/callback flows, encrypted token storage, token refresh, scope tracking, listing + health, and revoke/disconnect. It publishes events on connect/disconnect.
 
@@ -152,13 +153,13 @@ This is the single most valuable shared part. **Connect an external account once
 - Move to the single-app dispatcher as part of consolidation, since the whole reason Slack lives in Connections is that it's a *shared* connection.
 - Distribution detail to remember: installing into a foreign workspace uses the **sharable OAuth-start URL from the backend** (Manage Distribution), *not* the workspace-scoped marketplace URL.
 
-**Google strategy:** one Google Cloud project with **Internal** OAuth consent on an org Workspace account — this bypasses External verification and the CASA assessment entirely, on the hard condition that all YouTube channels and Drive accounts live in that same Workspace domain. One OAuth client; the subsystem stores a refresh token per account; modules request only the scopes they need (Drive readonly + YouTube upload for SlackTube). Keep the distinction sharp: `videos.insert` requires **OAuth2, not an API key** — API keys are only valid for comment monitoring (Comment Bridge).
+**Google strategy:** one Google Cloud project with **Internal** OAuth consent on an org Workspace account — this bypasses External verification and the CASA assessment entirely, on the hard condition that all YouTube channels and Drive accounts live in that same Workspace domain. One OAuth client; the subsystem stores a refresh token per account; modules request only the scopes they need (Drive readonly + YouTube upload for YouTube Uploads). Keep the distinction sharp: `videos.insert` requires **OAuth2, not an API key** — API keys are only valid for comment monitoring (YouTube Comments).
 
 ---
 
 ## 7. Data & persistence
 
-- **One PostgreSQL database, schema per module** (`comment_bridge`, `slacktube`, …) plus shared schemas (`connections`, `auth`, `shared`). Isolation without the operational overhead of many databases.
+- **One PostgreSQL database, schema per module** (`youtube_uploads`, `youtube_comments`, …) plus shared schemas (`connections`, `auth`, `shared`). Isolation without the operational overhead of many databases.
 - **Each module owns its own EF Core `DbContext`** mapped to its schema, with a **separate migration history**: set `MigrationsHistoryTable("__ef_migrations_history", "<schema>")` per context so histories don't collide.
 - **Conventions in `SharedKernel.Persistence`:** snake_case naming (EFCore.NamingConventions), UTC timestamps, an `EncryptedString` value converter that runs values through `ISecretProtector`, and base entity conventions.
 - **Migrations on startup:** the host iterates each module's `DbContext` and runs `Migrate()` (order-independent because schemas are isolated). Provide a design-time factory per context for `dotnet ef`.
@@ -169,8 +170,8 @@ This is the single most valuable shared part. **Connect an external account once
 ## 8. Background jobs & ephemeral state
 
 - **One Hangfire server**, hosted in the host process, with PostgreSQL storage (durable; survives restarts). Modules register recurring jobs via `IJobScheduler` and enqueue work as needed. The dashboard at `/hangfire` is secured behind admin auth.
-- **Job ownership:** Comment Bridge runs a recurring poll *per active mapping* (a dynamic scheduler keeps Hangfire's recurring jobs in sync with the mappings table). SlackTube is event-driven (Slack event → enqueue ingest → enqueue upload) as a durable pipeline with cancel/confirm.
-- **Redis (StackExchange.Redis)**, one shared connection, with a **key prefix per module** to prevent collisions: `cb:*`, `st:*` (event-dedup TTL, per-account daily quota, cancel flags, Slack status-message ts), `conn:*`, `auth:*`. Maintain the prefix registry in this doc. Redis holds **only** ephemeral/fast state; anything durable belongs in Postgres.
+- **Job ownership:** YouTube Comments runs a recurring poll *per active mapping* (a dynamic scheduler keeps Hangfire's recurring jobs in sync with the mappings table). YouTube Uploads is event-driven (Slack event → enqueue ingest → enqueue upload) as a durable pipeline with cancel/confirm.
+- **Redis (StackExchange.Redis)**, one shared connection, with a **key prefix per module** to prevent collisions: `ytu:*` (event-id dedup TTL, per-project daily quota, cancel flags, Slack status-message ts), `ytc:*`, `conn:*`, `auth:*`. The canonical prefix registry is `docs/redis-key-prefixes.md` (also Appendix B). Redis holds **only** ephemeral/fast state; anything durable belongs in Postgres.
 - **Quota tracking:** per-connection daily counters in Redis (Pacific-Time day for YouTube), surfaced in the UI as progress bars. Capacity-plan against **current** quota costs — the December-2025 `videos.insert` change dramatically lowered its cost, so old documentation will mislead you. At current volumes the free default is comfortable.
 
 ---
@@ -179,10 +180,10 @@ This is the single most valuable shared part. **Connect an external account once
 
 **One secret protector for the whole hub.** Two viable mechanisms:
 
-- **AES-256-GCM with a master key from env** (`TokenEncryption__Key`): stateless, no key-ring to persist, matches the volume-less deploy. Downside: rotating the master key invalidates all stored tokens. *(SlackTube's current approach.)*
-- **ASP.NET Data Protection with the key-ring in Postgres:** supports automatic key rotation. Downside: a key-ring table to manage. *(Comment Bridge's current approach.)*
+- **AES-256-GCM with a master key from env** (`TokenEncryption__Key`): stateless, no key-ring to persist, matches the volume-less deploy. Downside: rotating the master key invalidates all stored tokens. *(Carried over from the legacy SlackTube source repo — this is what YouTube Uploads uses today, with a 1-byte version header so the ciphertext format can rotate later.)*
+- **ASP.NET Data Protection with the key-ring in Postgres:** supports automatic key rotation. Downside: a key-ring table to manage. *(The legacy Comment Bridge source repo's approach.)*
 
-**Recommendation:** standardize on **AES-GCM env-key** for simplicity and statelessness (the hub deploy already relies on it). When folding Comment Bridge in, run a one-time migration that decrypts its Data-Protection-protected secrets and re-encrypts them under the new protector. **Never change the master key after launch.**
+**Recommendation:** standardize on **AES-GCM env-key** for simplicity and statelessness (the hub already relies on it — YouTube Uploads stores its secrets this way). When folding the legacy Comment Bridge source into the YouTube Comments module, run a one-time migration that decrypts its Data-Protection-protected secrets and re-encrypts them under the shared protector. **Never change the master key after launch.**
 
 Everything else: all external secrets (Slack bot tokens, Google refresh tokens, YouTube API keys) encrypted at rest via the protector + `EncryptedString` converter; Slack request-signature verification on webhooks; OAuth `state` validation (CSRF) with short-TTL state cookies; least-privilege OAuth scopes per connection.
 
@@ -190,7 +191,7 @@ Everything else: all external secrets (Slack bot tokens, Google refresh tokens, 
 
 ## 10. Auth & identity
 
-One sign-on for the whole hub, consolidating the two current approaches (Comment Bridge: email+password + JWT; SlackTube: admin user/pass + `X-Admin-Token` + BFF session).
+One sign-on for the whole hub, consolidating the two legacy source apps' approaches (the Comment Bridge repo: email+password + JWT; the SlackTube repo: admin user/pass + `X-Admin-Token` + BFF session).
 
 **Recommended model:** a shared `auth` subsystem with a `users` table (bcrypt), using the **Next.js BFF session** as the browser-facing mechanism — an httpOnly session cookie minted by the BFF, which calls the backend server-side with an admin token/header. The backend stays stateless behind the BFF. Provider webhooks and OAuth callbacks bypass auth (they're signature/state-verified instead).
 
@@ -202,9 +203,9 @@ Start with a single admin role but design the `users` table to allow roles later
 
 ## 11. HTTP & routing conventions
 
-- **App API (through the BFF):** `/api/{module}/...` (e.g. `/api/comment-bridge/mappings`, `/api/slacktube/jobs`), plus shared `/api/connections/...`, `/api/auth/...`, `/api/settings/...`, `/api/overview/...`.
+- **App API (through the BFF):** `/api/{module}/...` (e.g. `/api/youtube-uploads/jobs`, `/api/youtube-comments/mappings`), plus shared `/api/connections/...`, `/api/auth/...`, `/api/settings/...`, `/api/overview/...`.
 - **Provider endpoints (backend-direct, fixed paths):** `/slack/events|interactivity|oauth/*`, `/google/oauth/*`, future `/linkedin/oauth/*`. Owned by the Connections subsystem (module-scoped in the interim).
-- **Caddy — one site block for `danielhub.dev`:** route provider paths + `/hangfire` to the backend; everything else (including the `/api/*` BFF) to the frontend. This mirrors the existing SlackTube Caddy pattern.
+- **Caddy — one site block for `danielhub.dev`:** route provider paths + `/hangfire` to the backend; everything else (including the `/api/*` BFF) to the frontend. This mirrors the legacy SlackTube repo's Caddy pattern.
 - Define DTO casing, ProblemDetails errors, and the pagination envelope **once** in `SharedKernel` and reuse across all modules.
 
 ---
@@ -218,8 +219,8 @@ web/src/
   app/                       # routes — thin; they delegate to features
     (auth)/login/
     (hub)/overview/
-    (hub)/comment-bridge/{dashboard,channels,mappings,logs}/
-    (hub)/slacktube/{queue,history,mappings}/
+    (hub)/comments/{dashboard,feed,channels,mappings}/
+    (hub)/uploads/{queue,history,mappings}/
     (hub)/connections/{slack,google,api-keys}/
     (hub)/{logs,settings}/
     api/                     # the BFF: [...path] proxy + login/logout route handlers
@@ -227,7 +228,7 @@ web/src/
     ui/                      # shadcn (radix-nova)
     shell/                   # sidebar-07, header, breadcrumbs, command palette, user menu
   features/
-    overview/  comment-bridge/  slacktube/  connections/   # components, hooks (React Query), api client, types
+    overview/  comments/  uploads/  connections/   # components, hooks (React Query), api client, types
   lib/
     api/                     # BFF client + ProblemDetails handling
     auth/                    # session helpers
@@ -237,7 +238,7 @@ web/src/
 
 - **Nav registry (`lib/nav.ts`):** a typed array of groups → items → routes + lucide icons. The sidebar renders from it and breadcrumbs derive from it. Adding a module = adding one entry here plus its `features/` folder.
 - **Standardize the stack across modules:** Next 16 + shadcn `radix-nova` + Tailwind v4 + lucide-react + React Query + sonner + next-themes; add Recharts for dashboards; zod for form/DTO validation. Reconcile the current drift — pick **radix-ui** (shadcn `radix-nova` builds on it) over `@base-ui`, and align lucide-react versions.
-- **The BFF stays the security boundary:** browser → Next BFF (`/api/*`) → backend with a server-side admin token. The "Connect" buttons navigate the browser straight to the backend `/{provider}/oauth/start` via `NEXT_PUBLIC_BACKEND_URL` (build-time inlined), exactly as SlackTube does today.
+- **The BFF stays the security boundary:** browser → Next BFF (`/api/*`) → backend with a server-side admin token. The "Connect" buttons navigate the browser straight to the backend `/{provider}/oauth/start` via `NEXT_PUBLIC_BACKEND_URL` (build-time inlined), as the legacy SlackTube repo does.
 
 ---
 
@@ -268,13 +269,13 @@ Done — **no existing module changes.** Concretely: a LinkedIn module is a new 
 - **Observability:** Serilog structured logging to a shared sink, request logging, correlation IDs, health checks (`/health` covering DB + Redis), and the secured Hangfire dashboard.
 - **Audit:** a shared `IAuditLog` + table; modules write entries through it, and the "Logs" page reads it with a per-module filter.
 - **Errors:** ProblemDetails everywhere, surfaced consistently as sonner toasts on the frontend.
-- **Resilience:** Polly pipelines for all upstream calls (YouTube / Slack / Google / LinkedIn) — reuse the pattern from Comment Bridge's `Resilience` folder.
+- **Resilience:** Polly pipelines for all upstream calls (YouTube / Slack / Google / LinkedIn) — reuse the pattern from the legacy Comment Bridge repo's `Resilience` folder.
 
 ---
 
 ## 15. Testing
 
-- **Unit tests per module** (e.g. SlackTube's template parser, Comment Bridge's quota-aware key selection).
+- **Unit tests per module** (e.g. YouTube Uploads' template parser, YouTube Comments' quota-aware key selection).
 - **Architecture tests** asserting: no module references another module; modules reference only `SharedKernel` (+ allowed infra); `Domain` has no infra dependencies.
 - **Integration tests** with Testcontainers (Postgres + Redis) for endpoints and the job pipeline.
 - **Frontend:** type-check + lint in CI; component/interaction tests where they earn their keep.
@@ -295,8 +296,8 @@ Done — **no existing module changes.** Concretely: a LinkedIn module is a new 
 Path 1 is a real refactor, so do it in phases:
 
 - **Phase 0 — Foundation.** Stand up `DanielHub.Host` + `SharedKernel` + `Infrastructure` + the Connections and Auth subsystems (skeletons) + the Next.js shell (`sidebar-07`, nav registry, BFF, theme).
-- **Phase 1 — Absorb SlackTube first.** It's already .NET 10, single-project, Redis + Hangfire — the easiest to lift into a module. Move its Slack/Google connections into the shared Connections store and validate the module contract end-to-end.
-- **Phase 2 — Absorb Comment Bridge.** Bump it to .NET 10; fold its five clean-architecture projects into one module project (Domain/Features/Infrastructure/Endpoints folders); re-encrypt its Data-Protection secrets under the shared AES-GCM protector (one-time); move its YouTube API keys + Slack workspaces into Connections.
+- **Phase 1 — Absorb SlackTube first (DONE).** The legacy SlackTube source repo (already .NET 10, single-project, Redis + Hangfire) is now the **YouTube Uploads** module — `Hookline.Modules.YouTubeUploads`, schema `youtube_uploads`, Redis `ytu:*`, routes `/api/youtube-uploads/*`. Its Slack/Google accounts moved into the shared Connections store; secrets, settings, audit and jobs run on the shared kernel; the module contract is validated end-to-end.
+- **Phase 2 — Absorb Comment Bridge into the YouTube Comments module** — `Hookline.Modules.YouTubeComments`, schema `youtube_comments`, Redis `ytc:*`, routes `/api/youtube-comments/*`. Bump the legacy Comment Bridge / YouTubeBridge source repo to .NET 10; fold its five clean-architecture projects into one module project (Domain/Features/Infrastructure/Endpoints folders); re-encrypt its Data-Protection secrets under the shared AES-GCM protector (one-time); move its YouTube API keys + Slack workspaces into Connections.
 - **Phase 3 — Unify auth.** Single login; retire the two old deployments; point `danielhub.dev` at the hub; 301 the old subdomain.
 - **Phase 4+ — Grow.** Add LinkedIn, Website, and the rest as new modules using the playbook in §13.
 
@@ -316,7 +317,7 @@ Path 1 is a real refactor, so do it in phases:
 
 ## Appendix A — current vs. target, at a glance
 
-| Concern | Comment Bridge (today) | SlackTube (today) | Unified target |
+| Concern | Comment Bridge (legacy repo) | SlackTube (legacy repo) | Hookline (current / target) |
 |---|---|---|---|
 | Runtime / layout | .NET 8, 5 projects (clean arch) | .NET 10, 1 project (vertical slice) | .NET 10 — host + one module project per tool (vertical slice) |
 | Secrets | Data Protection (DB key-ring) | AES-GCM (env key) | AES-GCM (env key), one shared protector |
@@ -334,8 +335,8 @@ Path 1 is a real refactor, so do it in phases:
 
 | Prefix | Owner | Holds |
 |---|---|---|
-| `cb:*` | Comment Bridge | dedup / processing markers (ephemeral) |
-| `st:*` | SlackTube | event-id dedup TTL, per-account daily quota, cancel flags, Slack status ts |
+| `ytu:*` | YouTube Uploads (Phase 1, built) | event-id dedup, per-project daily quota, cancel flags, Slack status ts (48h) |
+| `ytc:*` | YouTube Comments (Phase 2, planned) | dedup / processing markers (ephemeral) |
 | `conn:*` | Connections | OAuth state, transient connection caches |
 | `auth:*` | Auth | session/rate-limit helpers |
 
