@@ -6,7 +6,7 @@ namespace Hookline.Infrastructure.Connections;
 /// <list type="bullet">
 ///   <item><c>conn:*</c> — Connections (OAuth state, transient caches)</item>
 ///   <item><c>auth:*</c> — Auth (session/rate-limit helpers)</item>
-///   <item><c>ytu:*</c> — YouTube Uploads module (ported from SlackTube)</item>
+///   <item><c>ytu:*</c> — YouTube Uploads module</item>
 ///   <item><c>ytc:*</c> — YouTube Comments module (Phase 2, from YouTubeBridge)</item>
 /// </list>
 /// </summary>

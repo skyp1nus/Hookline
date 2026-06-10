@@ -8,7 +8,7 @@ anything durable belongs in Postgres. Add a row whenever a new owner touches Red
 |---|---|---|---|
 | `conn:*` | Connections subsystem | OAuth `state` (CSRF, one-shot), transient connection caches | short (≤10m) |
 | `auth:*` | Auth subsystem | session / rate-limit helpers | short |
-| `ytu:*` | YouTube Uploads (`Hookline.Modules.YouTubeUploads`, ported from SlackTube) | event-id dedup, per-project daily quota, cancel flags, Slack status ts (48h) | TTL'd |
+| `ytu:*` | YouTube Uploads (`Hookline.Modules.YouTubeUploads`) | event-id dedup, per-project daily quota, cancel flags, Slack status ts (48h) | TTL'd |
 | `ytc:*` | YouTube Comments (`Hookline.Modules.YouTubeComments`, Phase 2, ported from YouTubeBridge / Comment Bridge) | dedup / processing markers | TTL'd |
 
 `conn:` / `auth:` are defined at `backend/src/Hookline.Infrastructure/Connections/RedisKeys.cs`;

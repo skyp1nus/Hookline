@@ -53,7 +53,7 @@ services:
       Auth__DevNoAuth: ${AUTH_DEV_NO_AUTH:-false}
       Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-admin@hookline.local}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
-      # ── YouTube Uploads module (ported from SlackTube). Provider OAuth uses the public
+      # ── YouTube Uploads module. Provider OAuth uses the public
       #    TUNNEL_URL so Slack/Google can reach the callbacks; PublicBaseUrl must match the
       #    redirect URIs registered in the Slack app + Google OAuth client.
       YouTubeUploads__Slack__SigningSecret: ${SLACK_SIGNING_SECRET:-}

@@ -53,6 +53,10 @@ public sealed class YouTubeUploadsStartupService(
     private async Task RecoverInterruptedJobsAsync(IServiceProvider sp, CancellationToken ct)
     {
         var db = sp.GetRequiredService<YouTubeUploadsDbContext>();
+        // Same DI scope ⇒ JobService shares this DbContext, so the jobs loaded below are tracked and can be
+        // transitioned through it. Routing recovery through TransitionAsync (not a raw history write) means the
+        // recovered Done/Failed/Queued transitions land in the shared audit trail like every other transition.
+        var jobs = sp.GetRequiredService<IJobService>();
 
         var interrupted = await db.Jobs.Where(j =>
             j.State == JobState.Queued || j.State == JobState.Downloading ||
@@ -60,35 +64,32 @@ public sealed class YouTubeUploadsStartupService(
         if (interrupted.Count == 0) return;
 
         int resumed = 0, failed = 0, finalized = 0;
-        var now = DateTimeOffset.UtcNow;
         var toEnqueue = new List<Guid>();
 
         foreach (var job in interrupted)
         {
             if (job.YouTubeVideoId is not null)
             {
-                job.History.Add(new JobStateHistory { JobId = job.Id, FromState = job.State, ToState = JobState.Done, At = now, Note = "recovered: upload had completed" });
-                job.State = JobState.Done; job.UpdatedAt = now; finalized++;
+                await jobs.TransitionAsync(job, JobState.Done, "recovered: upload had completed", ct);
+                finalized++;
             }
             else if (job.State is JobState.Uploading or JobState.Processing)
             {
                 job.ErrorMessage = "Interrupted after the YouTube upload started — verify in YouTube Studio; the bot won’t re-upload.";
-                job.History.Add(new JobStateHistory { JobId = job.Id, FromState = job.State, ToState = JobState.Failed, At = now, Note = "recovered: interrupted past point of no return" });
-                job.State = JobState.Failed; job.UpdatedAt = now; failed++;
+                await jobs.TransitionAsync(job, JobState.Failed, "recovered: interrupted past point of no return", ct);
+                failed++;
             }
             else // Queued or Downloading — resume from scratch
             {
                 if (job.State == JobState.Downloading)
                 {
-                    job.History.Add(new JobStateHistory { JobId = job.Id, FromState = job.State, ToState = JobState.Queued, At = now, Note = "recovered: re-queued after restart" });
-                    job.State = JobState.Queued; job.UpdatedAt = now;
+                    await jobs.TransitionAsync(job, JobState.Queued, "recovered: re-queued after restart", ct);
                 }
                 toEnqueue.Add(job.Id);
                 resumed++;
             }
         }
 
-        await db.SaveChangesAsync(ct);
         foreach (var id in toEnqueue)
         {
             scheduler.Enqueue<UploadJobHandler>(h => h.RunAsync(id, CancellationToken.None));

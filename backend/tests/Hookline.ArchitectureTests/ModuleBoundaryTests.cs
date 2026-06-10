@@ -98,6 +98,23 @@ public sealed class ModuleBoundaryTests
     {
         foreach (var assembly in ModuleAssemblies)
         {
+            var own = Name(assembly);
+
+            // Assembly-reference guard — non-vacuous even when only ONE module is in the build.
+            // It actively walks the module's reference graph and fails if any referenced assembly is a
+            // SIBLING Hookline.Modules.* (anything but itself). This bites the moment a module gains a
+            // project/assembly reference to another module — today, not only once a second module exists
+            // (which is the gap the NetArchTest layer below has while ModuleAssemblies has a single entry).
+            var illegalAssemblyRefs = assembly.GetReferencedAssemblies()
+                .Select(a => a.Name!)
+                .Where(n => n.StartsWith("Hookline.Modules.", StringComparison.Ordinal) && n != own)
+                .ToArray();
+
+            Assert.True(
+                illegalAssemblyRefs.Length == 0,
+                $"{own} references another module via assembly reference: {string.Join(", ", illegalAssemblyRefs)}");
+
+            // Type-dependency guard — deepens coverage to actual IL usage once a second module is present.
             var otherModules = ModuleAssemblies
                 .Where(a => a != assembly)
                 .Select(Name)
@@ -113,7 +130,7 @@ public sealed class ModuleBoundaryTests
                 .HaveDependencyOnAny(otherModules)
                 .GetResult();
 
-            Assert.True(result.IsSuccessful, Describe($"{Name(assembly)} references another module", result));
+            Assert.True(result.IsSuccessful, Describe($"{own} references another module", result));
         }
     }
 

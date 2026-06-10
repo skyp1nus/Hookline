@@ -26,7 +26,7 @@ public interface ISlackStatusService
 /// <summary>
 /// Singleton. One status message PER mapped channel. Each publish runs in its own DI scope (own
 /// DbContext) and is serialized by a semaphore so the high-frequency progress callbacks never race
-/// the worker's DbContext. The current message ts is kept per channel in Redis (<c>st:status:ts:*</c>,
+/// the worker's DbContext. The current message ts is kept per channel in Redis (<c>ytu:status:ts:*</c>,
 /// self-expiring per the noeviction policy). Throttle is per-channel: in-place updates at most every
 /// 2.5s AND ≥5% delta (phase changes always pass).
 /// </summary>

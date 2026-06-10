@@ -6,11 +6,13 @@ using Hookline.SharedKernel.Secrets;
 namespace Hookline.Infrastructure.Secrets;
 
 /// <summary>
-/// AES-256-GCM secret protector. Key = SHA-256(TokenEncryption__Key) (SlackTube-compatible).
+/// AES-256-GCM secret protector. Key = SHA-256(TokenEncryption__Key).
 /// Ciphertext layout: <c>[version(1)][nonce(12)][tag(16)][ciphertext(n)]</c>, base64-encoded.
-/// A fresh 96-bit CSPRNG nonce is used per encryption; the version byte keeps key
-/// rotation possible later. Fails fast if the master key is missing and never swallows
-/// an authentication-tag failure on decrypt.
+/// A fresh 96-bit CSPRNG nonce is used per encryption; the leading version byte keeps key/format
+/// rotation possible later. NOTE: that version byte is a deliberate format change — ciphertext from
+/// the pre-port app (which had no version prefix) is NOT decodable here. Phase 1 starts fresh via
+/// re-OAuth, so there is no legacy ciphertext to import. Fails fast if the master key is missing and
+/// never swallows an authentication-tag failure on decrypt.
 /// </summary>
 public sealed class AesGcmSecretProtector : ISecretProtector
 {
@@ -29,7 +31,7 @@ public sealed class AesGcmSecretProtector : ISecretProtector
                 "TokenEncryption__Key is required — refusing to start without an encryption key.");
         }
 
-        // SHA-256 of the configured key → a stable 32-byte AES-256 key (matches SlackTube).
+        // SHA-256 of the configured key → a stable 32-byte AES-256 key.
         _key = SHA256.HashData(Encoding.UTF8.GetBytes(masterKey));
     }
 

@@ -16,7 +16,7 @@ import type { IconType, Platform } from "./platforms";
 /**
  * The single source of truth for navigation. One config drives the sidebar,
  * the breadcrumbs and the ⌘K command palette. Route ids carry the backend
- * module mapping: `ytc-*` → comment-bridge, `ytu-*` → slacktube.
+ * module mapping: `ytc-*` → comment-bridge, `ytu-*` → youtube-uploads.
  */
 export type RouteId =
   | "overview"
@@ -33,7 +33,7 @@ export type RouteId =
   | "logs"
   | "settings";
 
-export type ModuleId = "comment-bridge" | "slacktube" | null;
+export type ModuleId = "comment-bridge" | "youtube-uploads" | null;
 
 type LabelFn = (p: Platform) => string;
 type IconFn = (p: Platform) => IconType;
@@ -95,9 +95,9 @@ const uploadsTool: ToolDef = {
   label: (p) => p.uploads,
   icon: CloudUpload,
   children: [
-    { id: "ytu-queue", path: "/uploads/queue", label: () => "Queue", icon: () => CloudUpload, cmdIcon: () => CloudUpload, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Queue`, module: "slacktube" },
-    { id: "ytu-history", path: "/uploads/history", label: () => "History", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · History`, module: "slacktube" },
-    { id: "ytu-mappings", path: "/uploads/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Mappings`, module: "slacktube" },
+    { id: "ytu-queue", path: "/uploads/queue", label: () => "Queue", icon: () => CloudUpload, cmdIcon: () => CloudUpload, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Queue`, module: "youtube-uploads" },
+    { id: "ytu-history", path: "/uploads/history", label: () => "History", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · History`, module: "youtube-uploads" },
+    { id: "ytu-mappings", path: "/uploads/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Mappings`, module: "youtube-uploads" },
   ],
 };
 

@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj" />
+    <Project Path="tests/Hookline.Infrastructure.Tests/Hookline.Infrastructure.Tests.csproj" />
     <Project Path="tests/Hookline.Modules.YouTubeUploads.Tests/Hookline.Modules.YouTubeUploads.Tests.csproj" />
   </Folder>
 </Solution>

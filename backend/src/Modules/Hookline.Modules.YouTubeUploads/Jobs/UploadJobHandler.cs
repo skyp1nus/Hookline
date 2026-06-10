@@ -5,7 +5,6 @@ using Hangfire;
 
 using Hookline.Modules.YouTubeUploads.Domain;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
-using Hookline.SharedKernel.Audit;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,7 +19,9 @@ namespace Hookline.Modules.YouTubeUploads.Jobs;
 /// deletes/modifies the video. AutomaticRetry is disabled (Attempts=0) to guarantee we never
 /// re-upload a video; a job interrupted after upload started is failed with a "verify in YouTube
 /// Studio" note rather than retried. The temp file is always cleaned up. Runs under the system
-/// principal (no HTTP context → <c>ICurrentUser</c> resolves to system) and writes audit entries.
+/// principal (no HTTP context → <c>ICurrentUser</c> resolves to system); every job-state transition
+/// is audited centrally by <see cref="JobService.TransitionAsync"/>, so this worker doesn't write
+/// audit entries itself.
 /// </summary>
 public sealed class UploadJobHandler(
     IJobService jobs,
@@ -35,7 +36,6 @@ public sealed class UploadJobHandler(
     SlackChannelService workspaces,
     UploadSettingsService settings,
     IOptions<YouTubeUploadsOptions> options,
-    IAuditLog audit,
     ILogger<UploadJobHandler> logger)
 {
     private const string PhaseDownload = "Downloading from Drive";
@@ -158,8 +158,6 @@ public sealed class UploadJobHandler(
                 SafeDelete(tempPath);
                 progress.Remove(job.Id);
                 await jobs.TransitionAsync(job, JobState.Blocked, "all projects for this channel hit today's quota", ct);
-                await audit.WriteAsync("upload.blocked", module: "youtube-uploads", entityType: "upload_job",
-                    entityId: job.Id.ToString(), detail: "daily quota exhausted", ct: CancellationToken.None);
                 await NotifyAsync(job, ":lock: All YouTube projects for this channel hit today's quota — blocked until after midnight PT.");
                 await status.RefreshQueueAsync(ct);
                 return;
@@ -203,10 +201,8 @@ public sealed class UploadJobHandler(
 
             job.YouTubeVideoId = result.VideoId;
             job.YouTubeUrl = result.Url;
-            await jobs.TransitionAsync(job, JobState.Done, "done", ct);
+            await jobs.TransitionAsync(job, JobState.Done, $"done → {result.Url}", ct);
             progress.Remove(job.Id);
-            await audit.WriteAsync("upload.completed", module: "youtube-uploads", entityType: "upload_job",
-                entityId: job.Id.ToString(), detail: result.Url, ct: CancellationToken.None);
 
             // Custom thumbnail is best-effort and runs AFTER the video exists — it must never fail the job.
             var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, ct);
@@ -286,8 +282,6 @@ public sealed class UploadJobHandler(
     {
         job.ErrorMessage = reason;
         await jobs.TransitionAsync(job, JobState.Failed, reason, CancellationToken.None);
-        await audit.WriteAsync("upload.failed", module: "youtube-uploads", entityType: "upload_job",
-            entityId: job.Id.ToString(), detail: reason, ct: CancellationToken.None);
         await NotifyAsync(job, $":x: Upload failed: {reason}");
     }
 
@@ -296,8 +290,6 @@ public sealed class UploadJobHandler(
         SafeDelete(tempPath);
         progress.Remove(job.Id);
         await jobs.TransitionAsync(job, JobState.Cancelled, "cancelled by user", CancellationToken.None);
-        await audit.WriteAsync("upload.cancelled", module: "youtube-uploads", entityType: "upload_job",
-            entityId: job.Id.ToString(), ct: CancellationToken.None);
         await NotifyAsync(job, $":no_entry_sign: *{job.OriginalFileName ?? job.Title}* — cancelled.");
         await status.RefreshQueueAsync(CancellationToken.None);
     }

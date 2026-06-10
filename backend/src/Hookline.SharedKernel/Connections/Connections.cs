@@ -79,7 +79,7 @@ public interface IGoogleConnections
 
     /// <summary>
     /// Short-lived access credential. Implementable only with an app-wide OAuth client; in Phase 1
-    /// the SlackTube module owns its OAuth clients ("Projects"), so it resolves the refresh token via
+    /// the YouTube Uploads module owns its OAuth clients ("Projects"), so it resolves the refresh token via
     /// <see cref="GetRefreshTokenAsync"/> and builds the credential with its issuing client itself.
     /// </summary>
     Task<GoogleAccessCredential?> GetCredentialAsync(Guid accountId, CancellationToken ct = default);

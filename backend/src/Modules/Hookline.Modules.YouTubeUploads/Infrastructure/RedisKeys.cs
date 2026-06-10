@@ -2,7 +2,7 @@ namespace Hookline.Modules.YouTubeUploads.Infrastructure;
 
 /// <summary>
 /// Central registry of Redis key shapes so TTL/semantics stay consistent. All keys use the
-/// YouTubeUploads prefix <c>st:</c> (see docs/redis-key-prefixes.md). The shared Redis runs
+/// YouTubeUploads prefix <c>ytu:</c> (see docs/redis-key-prefixes.md). The shared Redis runs
 /// <c>--maxmemory-policy noeviction</c>, so every key here MUST self-expire.
 /// </summary>
 public static class RedisKeys

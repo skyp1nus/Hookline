@@ -96,7 +96,9 @@ public sealed class ChannelMappingService(
     public Task<bool> IsAccountMappedAsync(Guid googleAccountId, CancellationToken ct = default) =>
         db.ChannelMappings.AnyAsync(m => m.GoogleAccountId == googleAccountId, ct);
 
-    /// <summary>Deactivate every mapping pointing at a now-disconnected account (event-driven).</summary>
+    /// <summary>Remove every mapping pointing at a now-disconnected account (event-driven). Mappings are
+    /// rebuildable routing config, so they are hard-deleted; the disconnect is recorded in the audit log
+    /// by the caller (the account↔project binding is soft-deactivated, preserving that link's history).</summary>
     public async Task<int> RemoveByAccountAsync(Guid googleAccountId, CancellationToken ct = default)
     {
         var gone = await db.ChannelMappings.Where(m => m.GoogleAccountId == googleAccountId).ToListAsync(ct);
@@ -106,7 +108,8 @@ public sealed class ChannelMappingService(
         return gone.Count;
     }
 
-    /// <summary>Deactivate every mapping for a now-disconnected workspace (event-driven).</summary>
+    /// <summary>Remove every mapping for a now-disconnected workspace (event-driven). Hard-deleted as
+    /// rebuildable routing config; the disconnect is recorded in the audit log by the caller.</summary>
     public async Task<int> RemoveByWorkspaceAsync(Guid workspaceId, CancellationToken ct = default)
     {
         var gone = await db.ChannelMappings.Where(m => m.SlackWorkspaceId == workspaceId).ToListAsync(ct);

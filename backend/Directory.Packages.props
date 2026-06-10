@@ -13,7 +13,7 @@
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.23" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.23" />
     <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
-    <!-- Google APIs (SlackTube module: Drive download + YouTube upload) -->
+    <!-- Google APIs (YouTube Uploads module: Drive download + YouTube upload) -->
     <PackageVersion Include="Google.Apis.Auth" Version="1.74.0" />
     <PackageVersion Include="Google.Apis.Drive.v3" Version="1.74.0.4135" />
     <PackageVersion Include="Google.Apis.YouTube.v3" Version="1.74.0.4162" />

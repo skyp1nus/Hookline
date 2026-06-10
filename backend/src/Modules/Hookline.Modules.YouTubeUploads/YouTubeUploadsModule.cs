@@ -16,7 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Hookline.Modules.YouTubeUploads;
 
 /// <summary>
-/// The "YouTube Uploads" tool (ported from the standalone "SlackTube" app). Templated Slack message →
+/// The "YouTube Uploads" tool. Templated Slack message →
 /// Drive download → private YouTube upload, with live status, cancel/confirm, per-project quota
 /// rotation and no-duplicate-upload guarantees. Slack workspaces + Google accounts come from the
 /// shared Connections subsystem; secrets via the shared protector; jobs via the shared scheduler.

@@ -1,4 +1,5 @@
 using Hookline.Modules.YouTubeUploads.Domain;
+using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
@@ -70,7 +71,7 @@ public interface IJobService
     Task<(int UploadsToday, int UploadsLast24h, int ErrorsLast24h)> GetDashboardCountsAsync(CancellationToken ct = default);
 }
 
-public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections googleAccounts) : IJobService
+public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections googleAccounts, IAuditLog audit) : IJobService
 {
     public async Task<UploadJob> CreateAsync(NewJob i, CancellationToken ct = default)
     {
@@ -127,6 +128,26 @@ public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections go
         job.State = to;
         job.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+
+        // Centralized accountability: EVERY job-state transition writes one shared audit entry, so no
+        // call site can forget (manual cancel/decline, the worker, and startup recovery all funnel here).
+        // The actor is the current user for interactive calls and the system principal for background work;
+        // the per-job JobStateHistory above remains the fine-grained timeline. Best-effort — an audit-store
+        // hiccup must never roll back or block a real state change.
+        try
+        {
+            await audit.WriteAsync(
+                $"upload.{to.ToString().ToLowerInvariant()}",
+                module: "youtube-uploads",
+                entityType: "upload_job",
+                entityId: job.Id.ToString(),
+                detail: note,
+                ct: ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // swallow: the transition already committed; losing one audit row is not worth failing the job
+        }
     }
 
     public async Task SaveAsync(UploadJob job, CancellationToken ct = default)

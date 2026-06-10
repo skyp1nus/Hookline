@@ -135,6 +135,7 @@ public sealed class GoogleAccountsService(
     /// <summary>The default account (oldest binding) — used when a job carries no explicit account.</summary>
     public Task<Guid?> GetDefaultAccountIdAsync(CancellationToken ct = default) =>
         db.GoogleAccountBindings.AsNoTracking()
+            .Where(b => b.IsActive)
             .OrderBy(b => b.CreatedAt)
             .Select(b => (Guid?)b.AccountId)
             .FirstOrDefaultAsync(ct);
@@ -171,7 +172,7 @@ public sealed class GoogleAccountsService(
         if (target is null) return Array.Empty<GoogleUploadCreds>();
 
         // Candidate SELECTION — entirely on youtube_uploads tables (bindings ⋈ projects), single schema.
-        var query = db.GoogleAccountBindings.AsNoTracking().Where(b => b.Status == "Active");
+        var query = db.GoogleAccountBindings.AsNoTracking().Where(b => b.Status == "Active" && b.IsActive);
         query = string.IsNullOrEmpty(target.YouTubeChannelId)
             ? query.Where(b => b.AccountId == targetAccountId)
             : query.Where(b => b.YouTubeChannelId == target.YouTubeChannelId);
@@ -216,7 +217,7 @@ public sealed class GoogleAccountsService(
             .FirstOrDefaultAsync(ct);
         if (target is null) return Array.Empty<Guid>();
 
-        var query = db.GoogleAccountBindings.AsNoTracking().Where(b => b.Status == "Active");
+        var query = db.GoogleAccountBindings.AsNoTracking().Where(b => b.Status == "Active" && b.IsActive);
         query = string.IsNullOrEmpty(target.YouTubeChannelId)
             ? query.Where(b => b.AccountId == targetAccountId)
             : query.Where(b => b.YouTubeChannelId == target.YouTubeChannelId);
