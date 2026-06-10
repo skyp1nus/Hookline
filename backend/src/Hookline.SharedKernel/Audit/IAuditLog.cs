@@ -40,4 +40,15 @@ public interface IAuditLogReader
         int page,
         int pageSize,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts entries since <paramref name="since"/>, optionally scoped to one <paramref name="module"/>
+    /// and to rows whose detail begins with <paramref name="detailPrefix"/> (the folded level marker,
+    /// e.g. <c>[Error]</c>). Lets a dashboard surface an at-a-glance KPI without paging the whole trail.
+    /// </summary>
+    Task<int> CountSinceAsync(
+        string? module,
+        DateTimeOffset since,
+        string? detailPrefix = null,
+        CancellationToken ct = default);
 }

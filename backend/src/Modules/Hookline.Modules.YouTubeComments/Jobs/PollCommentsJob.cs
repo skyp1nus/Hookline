@@ -236,6 +236,18 @@ public sealed class PollCommentsJob(
             await SetLastErrorAsync(mapping, msg, ct);
             logger.LogWarning(ex, "Quota exceeded for mapping {MappingId} on key {Key}", mappingId, lease.Name);
         }
+        catch (GoogleApiException ex) when (ex.IsKeyInvalid())
+        {
+            // The key itself is dead (revoked/invalid/expired/restricted, or API not enabled). Disable it
+            // so it leaves the rotation pool instead of failing every tick; the next tick rotates to
+            // another key. An admin re-enables it after fixing the credential.
+            await keys.MarkInvalidAsync(lease.Id, ct);
+            var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
+            var msg = $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})";
+            await audit.LogAsync("Warning", "ApiKey", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
+            await SetLastErrorAsync(mapping, msg, ct);
+            logger.LogWarning(ex, "API key {Key} disabled for mapping {MappingId}: {Reason}", lease.Name, mappingId, reason);
+        }
         catch (GoogleApiException ex) when (ex.HasReason("commentsDisabled") || (int)ex.HttpStatusCode == 403)
         {
             await keys.RecordUsageAsync(lease.Id, 1, ct);

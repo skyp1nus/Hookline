@@ -57,6 +57,25 @@ public class QuotaRotationTests
     }
 
     [Fact]
+    public async Task MarkInvalid_deactivates_the_key_so_it_leaves_rotation()
+    {
+        using var db = TestDb.Create();
+        var keys = new FakeKeyConnections();
+        var dead = keys.Seed("revoked", active: true);
+        var alive = keys.Seed("good", active: true, key: "KEY-GOOD");
+
+        var provider = Provider(db, keys);
+        await provider.MarkInvalidAsync(dead); // YouTube rejected it (e.g. keyInvalid)
+
+        var lease = await provider.AcquireAsync();
+        Assert.NotNull(lease);
+        Assert.Equal(alive, lease!.Id); // the dead key is gone from the candidate set; the good one wins
+
+        await provider.MarkInvalidAsync(alive);
+        Assert.Null(await provider.AcquireAsync()); // no active keys left → no lease, degrades gracefully
+    }
+
+    [Fact]
     public async Task RecordUsage_accumulates_for_the_pacific_day()
     {
         using var db = TestDb.Create();

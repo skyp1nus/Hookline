@@ -4,17 +4,16 @@ import {
   ChevronRight,
   ExternalLink,
   MoreHorizontal,
-  Pause,
-  Play,
   Plus,
   Search,
   Settings,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
+import { StatusBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -32,37 +31,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type CommentMapping } from "@/lib/mock-data";
-import { formatNumber } from "@/lib/format";
 import { useCommentMappings } from "@/features/comments/hooks";
-
-const FREQ_OPTIONS = ["1 min", "5 min", "15 min", "30 min", "1 hr"];
+import { pollingFrequencyLabel } from "@/features/comments/types";
 
 export default function MappingsPage() {
   const { data } = useCommentMappings();
-  const [rows, setRows] = useState<CommentMapping[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
 
-  useEffect(() => {
-    if (data) setRows(data.map((m) => ({ ...m })));
-  }, [data]);
-
-  const toggle = (id: string) =>
-    setRows((prev) => prev.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));
-  const setFreq = (id: string, freq: string) =>
-    setRows((prev) => prev.map((m) => (m.id === id ? { ...m, freq } : m)));
-
+  const rows = data ?? [];
   const shown = rows.filter((m) => {
-    if (status === "active" && !m.active) return false;
-    if (status === "paused" && m.active) return false;
+    if (status === "active" && !m.isActive) return false;
+    if (status === "paused" && m.isActive) return false;
     if (
       query &&
       !(
-        m.channel.toLowerCase().includes(query.toLowerCase()) ||
-        m.slack.toLowerCase().includes(query.toLowerCase())
+        m.youTubeChannelTitle.toLowerCase().includes(query.toLowerCase()) ||
+        m.slackChannelName.toLowerCase().includes(query.toLowerCase())
       )
     )
       return false;
@@ -144,8 +130,8 @@ export default function MappingsPage() {
                         <YoutubeIcon size={15} />
                       </div>
                       <div>
-                        <div className="text-[13.5px] font-[540]">{m.channel}</div>
-                        <div className="mono text-[11.5px] text-muted-foreground">{m.channelId}</div>
+                        <div className="text-[13.5px] font-[540]">{m.youTubeChannelTitle}</div>
+                        <div className="mono text-[11.5px] text-muted-foreground">{m.youTubeChannelId}</div>
                       </div>
                     </div>
                   </TableCell>
@@ -155,37 +141,20 @@ export default function MappingsPage() {
                   <TableCell className="px-4 py-3.5">
                     <span className="inline-flex items-center gap-1.5">
                       <SlackIcon size={14} className="text-muted-foreground" />
-                      <span className="mono text-[13px]">{m.slack}</span>
+                      <span className="mono text-[13px]">{m.slackChannelName}</span>
+                      <span className="text-[11.5px] text-muted-foreground">· {m.slackWorkspaceName}</span>
                     </span>
                   </TableCell>
                   <TableCell className="px-4 py-3.5">
-                    <Select value={m.freq} onValueChange={(v) => setFreq(m.id, v)}>
-                      <SelectTrigger size="sm" className="w-full text-[12.5px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FREQ_OPTIONS.map((f) => (
-                          <SelectItem key={f} value={f}>
-                            {f}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <span className="text-[12.5px]">{pollingFrequencyLabel(m.frequency)}</span>
                   </TableCell>
                   <TableCell className="px-4 py-3.5 text-right">
-                    <span
-                      className={`mono text-[13px] ${m.fwd24 ? "text-foreground" : "text-muted-foreground"}`}
-                    >
-                      {m.fwd24 ? formatNumber(m.fwd24) : "—"}
-                    </span>
+                    <span className="mono text-[13px] text-muted-foreground">—</span>
                   </TableCell>
                   <TableCell className="px-4 py-3.5 text-center">
-                    <div className="inline-flex items-center gap-[9px]">
-                      <Switch checked={m.active} onCheckedChange={() => toggle(m.id)} />
-                      <span className="w-12 text-left text-[12.5px] text-muted-foreground">
-                        {m.active ? "Active" : "Paused"}
-                      </span>
-                    </div>
+                    <StatusBadge tone={m.isActive ? "ok" : "neutral"} dot>
+                      {m.isActive ? "Active" : "Paused"}
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="px-4 py-3.5 text-right">
                     <DropdownMenu>
@@ -198,10 +167,6 @@ export default function MappingsPage() {
                         <DropdownMenuItem>
                           <Settings className="size-4" />
                           Edit mapping
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => toggle(m.id)}>
-                          {m.active ? <Pause className="size-4" /> : <Play className="size-4" />}
-                          {m.active ? "Pause" : "Resume"}
                         </DropdownMenuItem>
                         <DropdownMenuItem>
                           <ExternalLink className="size-4" />

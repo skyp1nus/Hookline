@@ -70,6 +70,10 @@ public sealed class YouTubeApiKeyProvider(
         await db.SaveChangesAsync(ct);
     }
 
+    public Task MarkInvalidAsync(Guid apiKeyId, CancellationToken ct = default) =>
+        // Disable the key in the shared pool; ListActiveAsync then excludes it from rotation.
+        keys.ToggleAsync(apiKeyId, isActive: false, ct);
+
     public async Task MarkExhaustedAsync(Guid apiKeyId, CancellationToken ct = default)
     {
         var today = PacificTime.Today();

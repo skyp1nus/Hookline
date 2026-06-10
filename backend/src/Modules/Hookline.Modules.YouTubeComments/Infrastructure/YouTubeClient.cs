@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
 
 using Google;
+using Google.Apis.Http;
 using Google.Apis.Services;
+using Google.Apis.Util;
 using Google.Apis.YouTube.v3;
 using Google.Apis.YouTube.v3.Data;
 
@@ -10,9 +12,12 @@ using Microsoft.Extensions.Logging;
 namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
 /// <summary>
-/// <see cref="IYouTubeClient"/> backed by the Google.Apis.YouTube.v3 client library. Google's client
-/// applies its own exponential backoff to transient 5xx/429 responses; <c>quotaExceeded</c> and
-/// <c>commentsDisabled</c> bubble as <see cref="GoogleApiException"/> so the jobs can branch.
+/// <see cref="IYouTubeClient"/> backed by the Google.Apis.YouTube.v3 client library. Each service is
+/// configured (see <see cref="CreateService"/>) with an exponential back-off handler that retries
+/// transient 5xx/429 responses in-call; <c>quotaExceeded</c> (403) is excluded so it bubbles as a
+/// <see cref="GoogleApiException"/> for the job to rotate keys, as do <c>commentsDisabled</c> and
+/// other non-transient reasons. There is no circuit breaker — the durable retry queue and per-tick
+/// scheduling absorb sustained outages.
 /// </summary>
 public sealed partial class YouTubeClient(ILogger<YouTubeClient> logger) : IYouTubeClient
 {
@@ -332,11 +337,26 @@ public sealed partial class YouTubeClient(ILogger<YouTubeClient> logger) : IYouT
             ParentCommentId: parentCommentId);
     }
 
-    private static YouTubeService CreateService(string apiKey) => new(new BaseClientService.Initializer
+    private static YouTubeService CreateService(string apiKey)
     {
-        ApiKey = apiKey,
-        ApplicationName = ApplicationName,
-    });
+        var service = new YouTubeService(new BaseClientService.Initializer
+        {
+            ApiKey = apiKey,
+            ApplicationName = ApplicationName,
+        });
+
+        // Lightweight in-call resilience: retry transient 5xx/429 with exponential back-off (up to 3
+        // extra attempts, ~1s/2s/4s). quotaExceeded (403) is not transient, so it is left to bubble and
+        // the job rotates keys instead of burning more quota.
+        var backOff = new BackOffHandler(new BackOffHandler.Initializer(new ExponentialBackOff(TimeSpan.FromSeconds(1), 3))
+        {
+            HandleUnsuccessfulResponseFunc = response =>
+                GoogleApiExceptionExtensions.IsTransientStatus(response.StatusCode),
+        });
+        service.HttpClient.MessageHandler.AddUnsuccessfulResponseHandler(backOff);
+
+        return service;
+    }
 
     /// <summary>Maps a channel resource snippet to <see cref="YouTubeChannelInfo"/>, or <c>null</c>.</summary>
     private static YouTubeChannelInfo? MapChannel(Channel? channel)

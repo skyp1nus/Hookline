@@ -1,3 +1,4 @@
+using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public sealed class DashboardService(
     YouTubeCommentsDbContext db,
     IYouTubeApiKeyConnections keys,
     ISlackConnections slackConnections,
+    IAuditLogReader auditLog,
     IOptions<YouTubeCommentsOptions> options)
 {
     private readonly int _dailyLimit = options.Value.DailyQuotaUnits;
@@ -59,9 +61,10 @@ public sealed class DashboardService(
             ? Math.Round((double)totalQuotaUsedToday / totalQuotaLimit * 100, 1)
             : 0;
 
-        // Audit lives in the shared trail now; a per-module 24h error count is surfaced by the shared
-        // System→Logs page rather than here.
-        const int errorsLast24h = 0;
+        // Audit lives in the shared trail; count this module's error-level rows (level is folded into
+        // the detail as "[Error] ...") in the last 24h so the KPI reflects reality instead of a flat 0.
+        var errorsLast24h = await auditLog.CountSinceAsync(
+            CommentsAudit.ModuleName, since24h, detailPrefix: "[Error]", ct);
 
         var workspaces = await slackConnections.ListAsync(ct);
         var connectedWorkspaces = workspaces.Count(w => w.IsActive);

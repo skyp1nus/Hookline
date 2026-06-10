@@ -228,6 +228,16 @@ public sealed class DeepReplySweepJob(
                 $"Quota exhausted on key '{lease.Name}' during reply sweep", "ChannelMapping", mappingId.ToString(), ct: ct);
             logger.LogWarning(ex, "Quota exceeded during reply sweep {MappingId}", mappingId);
         }
+        catch (GoogleApiException ex) when (ex.IsKeyInvalid())
+        {
+            // Dead key — disable it so it leaves the rotation pool; the next tick rotates to another key.
+            await keys.MarkInvalidAsync(lease.Id, ct);
+            var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
+            await audit.LogAsync("Warning", "ApiKey",
+                $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})",
+                "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
+            logger.LogWarning(ex, "API key {Key} disabled during reply sweep {MappingId}: {Reason}", lease.Name, mappingId, reason);
+        }
         catch (GoogleApiException ex) when (ex.HasReason("commentsDisabled") || (int)ex.HttpStatusCode == 403)
         {
             await keys.RecordUsageAsync(lease.Id, 1, ct);

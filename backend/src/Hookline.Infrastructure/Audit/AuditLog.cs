@@ -65,4 +65,27 @@ public sealed class AuditLogReader(SharedDbContext db) : IAuditLogReader
 
         return new PagedResult<AuditLogRecord>(items, req.SafePage, req.SafePageSize, total);
     }
+
+    public async Task<int> CountSinceAsync(
+        string? module,
+        DateTimeOffset since,
+        string? detailPrefix = null,
+        CancellationToken ct = default)
+    {
+        var query = db.AuditLogs.AsNoTracking().Where(a => a.Timestamp >= since);
+
+        if (!string.IsNullOrWhiteSpace(module))
+        {
+            query = query.Where(a => a.Module == module);
+        }
+
+        if (!string.IsNullOrWhiteSpace(detailPrefix))
+        {
+            // The level marker is folded into the detail prefix (e.g. "[Error] ..."). Postgres LIKE
+            // treats '[' / ']' literally, so StartsWith matches the marker exactly.
+            query = query.Where(a => a.Detail != null && a.Detail.StartsWith(detailPrefix));
+        }
+
+        return await query.CountAsync(ct);
+    }
 }

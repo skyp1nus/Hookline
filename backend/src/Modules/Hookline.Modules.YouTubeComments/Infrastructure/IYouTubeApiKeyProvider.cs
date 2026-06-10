@@ -28,4 +28,12 @@ public interface IYouTubeApiKeyProvider
     /// when YouTube reports <c>quotaExceeded</c> before our local counter reached the limit).
     /// </summary>
     Task MarkExhaustedAsync(Guid apiKeyId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently disables the key in the shared pool (sets it inactive) after YouTube rejected it
+    /// with a hard credential error (revoked/invalid/expired/restricted, or API not enabled). It then
+    /// drops out of <see cref="AcquireAsync"/> rotation until an admin re-enables it — so a dead key
+    /// no longer fails every tick. Unlike <see cref="MarkExhaustedAsync"/>, this does not auto-recover.
+    /// </summary>
+    Task MarkInvalidAsync(Guid apiKeyId, CancellationToken ct = default);
 }

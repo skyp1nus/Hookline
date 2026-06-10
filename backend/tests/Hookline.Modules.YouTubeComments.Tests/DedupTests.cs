@@ -110,6 +110,7 @@ public class DedupTests
             Task.FromResult<ApiKeyLease?>(new ApiKeyLease(Guid.NewGuid(), "k", "API", 9999));
         public Task RecordUsageAsync(Guid apiKeyId, int units, CancellationToken ct = default) => Task.CompletedTask;
         public Task MarkExhaustedAsync(Guid apiKeyId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MarkInvalidAsync(Guid apiKeyId, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class NullScheduler : IPollingScheduler

@@ -1,54 +1,30 @@
 "use client";
 
-import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { PageHeading } from "@/components/page-heading";
 import { StatusDot } from "@/components/status";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { useCommentsFeed } from "@/features/comments/hooks";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatNumber } from "@/lib/format";
+import { useCommentsTimeline } from "@/features/comments/hooks";
 
-import { CommentCard } from "../_components/comment-card";
-
-const FLAG_TABS: { key: string; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "question", label: "Questions" },
-  { key: "top-fan", label: "Top fans" },
-  { key: "held", label: "Held" },
-];
+function hourLabel(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export default function FeedPage() {
-  const [query, setQuery] = useState("");
-  const [chan, setChan] = useState("all");
-  const [flag, setFlag] = useState("all");
+  const { data, isLoading } = useCommentsTimeline();
+  const points = useMemo(() => data ?? [], [data]);
 
-  const { data } = useCommentsFeed();
-  const feed = useMemo(() => data ?? [], [data]);
-
-  const channels = useMemo(() => [...new Set(feed.map((f) => f.ytChannel))], [feed]);
-
-  const shown = feed.filter((f) => {
-    if (chan !== "all" && f.ytChannel !== chan) return false;
-    if (flag === "held" && !f.held) return false;
-    if (flag !== "all" && flag !== "held" && !f.flags.includes(flag)) return false;
-    if (
-      query &&
-      !(
-        f.text.toLowerCase().includes(query.toLowerCase()) ||
-        f.author.toLowerCase().includes(query.toLowerCase())
-      )
-    )
-      return false;
-    return true;
-  });
+  const total = points.reduce((sum, p) => sum + p.count, 0);
+  const max = Math.max(...points.map((p) => p.count), 1);
 
   return (
     <div className="flex flex-col gap-[18px]">
       <PageHeading
         title="Feed"
-        description="Every comment forwarded to Slack, newest first."
+        description="Comments processed and forwarded to Slack over the last 24 hours."
         actions={
           <div className="flex items-center gap-[7px] text-[12.5px] text-muted-foreground">
             <StatusDot tone="ok" pulse />
@@ -57,60 +33,51 @@ export default function FeedPage() {
         }
       />
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        <div className="relative w-[260px] max-w-full">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search comments or authors…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-        <Select value={chan} onValueChange={setChan}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All channels</SelectItem>
-            {channels.map((ch) => (
-              <SelectItem key={ch} value={ch}>
-                {ch}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex gap-1 rounded-[calc(var(--radius)-1px)] bg-muted p-1">
-          {FLAG_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFlag(tab.key)}
-              className={cn(
-                "h-7 rounded-[calc(var(--radius)-4px)] px-[11px] text-[12.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                flag === tab.key
-                  ? "bg-background text-foreground shadow-[var(--shadow-xs)]"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Comments · last 24h</CardTitle>
+          <CardDescription>
+            {isLoading ? "Loading…" : `${formatNumber(total)} comments processed, by hour`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-44 w-full rounded-xl" />
+          ) : total === 0 ? (
+            <p className="py-12 text-center text-[13.5px] text-muted-foreground">
+              No comments processed in the last 24 hours.
+            </p>
+          ) : (
+            <div className="flex h-44 items-end gap-1">
+              {points.map((p) => (
+                <div
+                  key={p.bucket}
+                  className="group flex flex-1 flex-col items-center justify-end gap-1"
+                  title={`${hourLabel(p.bucket)} · ${formatNumber(p.count)}`}
+                >
+                  <span className="mono text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                    {p.count}
+                  </span>
+                  <div
+                    className="w-full rounded-t-[3px] bg-primary/80 transition-colors group-hover:bg-primary"
+                    style={{ height: `${Math.max((p.count / max) * 100, p.count > 0 ? 4 : 1)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          {!isLoading && total > 0 && (
+            <div className="mt-2 flex justify-between text-[10.5px] text-muted-foreground">
+              <span>{hourLabel(points[0].bucket)}</span>
+              <span>{hourLabel(points[points.length - 1].bucket)}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {shown.length === 0 ? (
-        <div className="py-12 text-center text-[13.5px] text-muted-foreground">
-          No comments match these filters.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {shown.map((f) => (
-            <CommentCard key={f.id} item={f} />
-          ))}
-        </div>
-      )}
+      <p className="text-center text-[12px] text-muted-foreground">
+        A per-comment feed is not available yet — this view shows the hourly processing timeline.
+      </p>
     </div>
   );
 }
