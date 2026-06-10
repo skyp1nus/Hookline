@@ -3,7 +3,7 @@ using Hangfire;
 using Hookline.Host.Endpoints;
 using Hookline.Infrastructure;
 using Hookline.Infrastructure.Jobs;
-using Hookline.Modules.Sample;
+using Hookline.Modules.YouTubeUploads;
 using Hookline.SharedKernel.Jobs;
 using Hookline.SharedKernel.Modules;
 
@@ -26,7 +26,7 @@ try
     builder.Services.AddHooklineInfrastructure(builder.Configuration, builder.Environment);
 
     // The explicit module list — no reflection scanning. Adding a module is one line here.
-    var modules = new List<IModule> { new SampleModule() };
+    var modules = new List<IModule> { new YouTubeUploadsModule() };
     foreach (var module in modules)
     {
         module.RegisterServices(builder.Services, builder.Configuration);

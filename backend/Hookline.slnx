@@ -5,9 +5,10 @@
     <Project Path="src/Hookline.SharedKernel/Hookline.SharedKernel.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
-    <Project Path="src/Modules/Hookline.Modules.Sample/Hookline.Modules.Sample.csproj" />
+    <Project Path="src/Modules/Hookline.Modules.YouTubeUploads/Hookline.Modules.YouTubeUploads.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj" />
+    <Project Path="tests/Hookline.Modules.YouTubeUploads.Tests/Hookline.Modules.YouTubeUploads.Tests.csproj" />
   </Folder>
 </Solution>

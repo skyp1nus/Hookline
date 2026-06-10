@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { type Job } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { useJobs } from "@/features/uploads/hooks";
+import { useCancelJob, useJobs } from "@/features/uploads/hooks";
 
 import { JobCard } from "./_components/job-card";
 
@@ -26,6 +26,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 export default function QueuePage() {
   const { data } = useJobs();
+  const cancelJob = useCancelJob();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<FilterKey>("active");
 
@@ -66,8 +67,10 @@ export default function QueuePage() {
     return () => clearInterval(iv);
   }, []);
 
-  const cancel = (id: string) =>
+  const cancel = (id: string) => {
     setJobs((p) => p.map((j) => (j.id === id ? { ...j, status: "canceled" } : j)));
+    cancelJob.mutate(id);
+  };
   const retry = (id: string) =>
     setJobs((p) =>
       p.map((j) =>

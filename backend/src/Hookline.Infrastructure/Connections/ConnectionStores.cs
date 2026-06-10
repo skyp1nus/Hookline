@@ -1,15 +1,22 @@
 using Hookline.SharedKernel.Connections;
+using Hookline.SharedKernel.Messaging;
 
 using Microsoft.EntityFrameworkCore;
 
 namespace Hookline.Infrastructure.Connections;
 
-/// <summary>Reads Slack bot tokens (decrypted by the converter on read) + lists workspaces.</summary>
-public sealed class SlackConnections(ConnectionsDbContext db) : ISlackConnections
+/// <summary>Reads/writes Slack bot tokens (encrypted by the converter) + lists workspaces.</summary>
+public sealed class SlackConnections(ConnectionsDbContext db, IEventBus events) : ISlackConnections
 {
     public async Task<string?> GetBotTokenAsync(Guid workspaceId, CancellationToken ct = default) =>
         await db.SlackWorkspaces.AsNoTracking()
             .Where(w => w.Id == workspaceId && w.IsActive)
+            .Select(w => w.BotTokenEncrypted)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) =>
+        await db.SlackWorkspaces.AsNoTracking()
+            .Where(w => w.TeamId == teamId && w.IsActive)
             .Select(w => w.BotTokenEncrypted)
             .FirstOrDefaultAsync(ct);
 
@@ -18,22 +25,107 @@ public sealed class SlackConnections(ConnectionsDbContext db) : ISlackConnection
             .OrderBy(w => w.TeamName)
             .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.IsActive))
             .ToListAsync(ct);
+
+    public async Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default) =>
+        await db.SlackWorkspaces.AsNoTracking()
+            .Where(w => w.TeamId == teamId)
+            .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.IsActive))
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default)
+    {
+        var existing = await db.SlackWorkspaces.FirstOrDefaultAsync(w => w.TeamId == write.TeamId, ct);
+        if (existing is null)
+        {
+            existing = new SlackWorkspace { TeamId = write.TeamId, InstalledAt = DateTimeOffset.UtcNow };
+            db.SlackWorkspaces.Add(existing);
+        }
+
+        existing.TeamName = write.TeamName;
+        existing.BotTokenEncrypted = write.BotToken; // encrypted on write by the converter
+        existing.BotUserId = write.BotUserId;
+        existing.Scope = write.Scope;
+        existing.AuthedUserId = write.AuthedUserId;
+        existing.IsActive = true;
+
+        await db.SaveChangesAsync(ct);
+        return existing.Id;
+    }
+
+    public async Task<bool> DeactivateAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var ws = await db.SlackWorkspaces.FirstOrDefaultAsync(w => w.Id == workspaceId, ct);
+        if (ws is null)
+        {
+            return false;
+        }
+
+        ws.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        await events.PublishAsync(new SlackWorkspaceDisconnected(workspaceId), ct);
+        return true;
+    }
 }
 
-/// <summary>
-/// Lists Google accounts. <see cref="GetCredentialAsync"/> is a Phase-0 skeleton — real
-/// refresh-token exchange lands when SlackTube is absorbed (Phase 1).
-/// </summary>
-public sealed class GoogleConnections(ConnectionsDbContext db) : IGoogleConnections
+/// <summary>Reads/writes Google accounts in the shared store. The decrypted refresh token is handed to
+/// the owning module, which rebuilds credentials with its issuing OAuth client (Projects are module-local).</summary>
+public sealed class GoogleConnections(ConnectionsDbContext db, IEventBus events) : IGoogleConnections
 {
+    public async Task<IReadOnlyList<GoogleAccountSummary>> ListAsync(CancellationToken ct = default) =>
+        await db.GoogleAccounts.AsNoTracking()
+            .OrderBy(g => g.ConnectedAt)
+            .Select(g => new GoogleAccountSummary(g.Id, g.ChannelTitle, g.IsActive))
+            .ToListAsync(ct);
+
+    public async Task<GoogleAccountDetail?> GetAsync(Guid accountId, CancellationToken ct = default) =>
+        await db.GoogleAccounts.AsNoTracking()
+            .Where(g => g.Id == accountId)
+            .Select(g => new GoogleAccountDetail(
+                g.Id, g.ChannelId, g.ChannelTitle, g.AccountEmail, g.AvatarUrl, g.Scopes, g.IsActive))
+            .FirstOrDefaultAsync(ct);
+
+    // Needs an app-wide OAuth client to mint access tokens; module-local Projects own that, so this
+    // stays null and callers use GetRefreshTokenAsync + their issuing client instead.
     public Task<GoogleAccessCredential?> GetCredentialAsync(Guid accountId, CancellationToken ct = default) =>
         Task.FromResult<GoogleAccessCredential?>(null);
 
-    public async Task<IReadOnlyList<GoogleAccountSummary>> ListAsync(CancellationToken ct = default) =>
+    public async Task<string?> GetRefreshTokenAsync(Guid accountId, CancellationToken ct = default) =>
         await db.GoogleAccounts.AsNoTracking()
-            .OrderBy(g => g.ChannelTitle)
-            .Select(g => new GoogleAccountSummary(g.Id, g.ChannelTitle, g.IsActive))
-            .ToListAsync(ct);
+            .Where(g => g.Id == accountId && g.IsActive)
+            .Select(g => g.RefreshTokenEncrypted) // decrypted on read by the converter
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<Guid> CreateAccountAsync(GoogleAccountWrite write, CancellationToken ct = default)
+    {
+        var account = new GoogleAccount
+        {
+            ChannelId = write.ChannelId,
+            ChannelTitle = write.ChannelTitle,
+            AccountEmail = write.AccountEmail,
+            AvatarUrl = write.AvatarUrl,
+            RefreshTokenEncrypted = write.RefreshToken, // encrypted on write by the converter
+            Scopes = write.Scopes,
+            IsActive = true,
+            ConnectedAt = DateTimeOffset.UtcNow,
+        };
+        db.GoogleAccounts.Add(account);
+        await db.SaveChangesAsync(ct);
+        return account.Id;
+    }
+
+    public async Task<bool> DeactivateAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var account = await db.GoogleAccounts.FirstOrDefaultAsync(g => g.Id == accountId, ct);
+        if (account is null)
+        {
+            return false;
+        }
+
+        account.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        await events.PublishAsync(new GoogleAccountDisconnected(accountId), ct);
+        return true;
+    }
 }
 
 /// <summary>Aggregates every connection into a unified catalog for the UI.</summary>

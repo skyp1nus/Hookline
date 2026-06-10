@@ -36,7 +36,10 @@ public sealed class ConnectionsDbContext(
         google.ToTable("google_accounts");
         google.HasKey(g => g.Id);
         google.Property(g => g.ChannelTitle).HasMaxLength(200);
+        google.Property(g => g.AccountEmail).HasMaxLength(320);
+        google.Property(g => g.ChannelId).HasMaxLength(64);
         google.Property(g => g.RefreshTokenEncrypted).IsEncrypted(protector);
+        google.HasIndex(g => g.ChannelId);
 
         var key = model.Entity<YouTubeApiKey>();
         key.ToTable("api_keys");

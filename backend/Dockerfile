@@ -7,7 +7,7 @@ COPY global.json Directory.Build.props Directory.Packages.props Hookline.slnx ./
 COPY src/Hookline.Host/Hookline.Host.csproj src/Hookline.Host/
 COPY src/Hookline.SharedKernel/Hookline.SharedKernel.csproj src/Hookline.SharedKernel/
 COPY src/Hookline.Infrastructure/Hookline.Infrastructure.csproj src/Hookline.Infrastructure/
-COPY src/Modules/Hookline.Modules.Sample/Hookline.Modules.Sample.csproj src/Modules/Hookline.Modules.Sample/
+COPY src/Modules/Hookline.Modules.YouTubeUploads/Hookline.Modules.YouTubeUploads.csproj src/Modules/Hookline.Modules.YouTubeUploads/
 COPY tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj tests/Hookline.ArchitectureTests/
 RUN dotnet restore src/Hookline.Host/Hookline.Host.csproj
 

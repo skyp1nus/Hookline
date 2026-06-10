@@ -30,8 +30,18 @@ namespace Hookline.Infrastructure.Connections.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ChannelId")
+                    b.Property<string>("AccountEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("account_email");
+
+                    b.Property<string>("AvatarUrl")
                         .HasColumnType("text")
+                        .HasColumnName("avatar_url");
+
+                    b.Property<string>("ChannelId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
                         .HasColumnName("channel_id");
 
                     b.Property<string>("ChannelTitle")
@@ -60,6 +70,9 @@ namespace Hookline.Infrastructure.Connections.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_google_accounts");
+
+                    b.HasIndex("ChannelId")
+                        .HasDatabaseName("ix_google_accounts_channel_id");
 
                     b.ToTable("google_accounts", "connections");
                 });

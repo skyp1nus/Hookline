@@ -1,0 +1,128 @@
+using Hangfire;
+
+using Hookline.Modules.YouTubeUploads.Infrastructure;
+using Hookline.SharedKernel.Audit;
+using Hookline.SharedKernel.Jobs;
+
+using Microsoft.Extensions.Logging;
+
+namespace Hookline.Modules.YouTubeUploads.Jobs;
+
+/// <summary>A plain Slack message we may turn into an upload job (passed through Hangfire).
+/// <paramref name="ThumbnailUrl"/>/<paramref name="ThumbnailMimeType"/> carry an image attached to the
+/// message (Slack <c>url_private</c>) to use as the video's custom thumbnail; null when none.</summary>
+public sealed record SlackMessageRef(
+    string EventId, string ChannelId, string UserId, string Ts, string Text,
+    string? ThumbnailUrl = null, string? ThumbnailMimeType = null);
+
+/// <summary>
+/// Stage 1 of the pipeline (runs as a Hangfire job so the HTTP endpoint can ACK in &lt;3s and the
+/// work is durable). Parses the template, validates against Drive, then either asks for
+/// confirmation (missing description/tags) or enqueues the upload job (stage 2). Idempotent by
+/// event_id AND channel+ts, so the <c>[AutomaticRetry(Attempts = 2)]</c> retries are safe.
+/// </summary>
+public sealed class SlackIngestService(
+    SlackTemplateParser parser,
+    GoogleAccountsService oauth,
+    DriveDownloadService drive,
+    IJobService jobs,
+    ChannelMappingService mappings,
+    SlackClient slack,
+    SlackChannelService workspaces,
+    ISlackStatusService status,
+    IJobScheduler scheduler,
+    IAuditLog audit,
+    ILogger<SlackIngestService> logger)
+{
+    [AutomaticRetry(Attempts = 2)]
+    public async Task ProcessMessageAsync(SlackMessageRef msg, CancellationToken ct)
+    {
+        // Idempotent across Hangfire retries / Slack redeliveries (by event_id) AND across distinct events
+        // for the same post (by channel+ts) — accepting file_share messages could otherwise double up.
+        if (await jobs.ExistsForEventAsync(msg.EventId, ct)) return;
+        if (await jobs.ExistsForChannelMessageAsync(msg.ChannelId, msg.Ts, ct)) return;
+
+        // Only mapped channels — resolve the target Google account from the mapping.
+        var mapping = await mappings.GetByChannelAsync(msg.ChannelId, ct);
+        if (mapping is null) return;
+
+        var parsed = parser.Parse(msg.Text);
+        if (!parsed.IsUploadTemplate) return; // not an UPLOAD command — ignore silently
+
+        if (!parsed.HasVideo)
+        {
+            await ReplyAsync(msg, ":x: No Google Drive video link found. Add a `Video:` line with a Drive link.", ct);
+            return;
+        }
+
+        var creds = await oauth.GetAccountCredsAsync(mapping.GoogleAccountId, ct);
+        if (creds is null)
+        {
+            await ReplyAsync(msg, ":warning: The mapped Google account is unavailable — reconnect it in the admin panel.", ct);
+            return;
+        }
+
+        // Verify the Drive file is reachable + grab its name up front (no YouTube quota cost).
+        DriveFileInfo info;
+        try
+        {
+            info = await drive.GetInfoAsync(drive.BuildService(creds.ClientId, creds.ClientSecret, creds.RefreshToken), parsed.DriveFileId!, creds.ProjectId, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Drive metadata fetch failed for {FileId}", parsed.DriveFileId);
+            await ReplyAsync(msg, ":x: Couldn’t access that Drive file — make sure it’s shared with the connected Google account.", ct);
+            return;
+        }
+
+        if (info.IsGoogleNative)
+        {
+            await ReplyAsync(msg, ":x: That Drive file is a Google-native doc, not a video file.", ct);
+            return;
+        }
+
+        var requiresConfirm = !parsed.HasDescription || !parsed.HasTags;
+        var job = await jobs.CreateAsync(new NewJob(
+            msg.EventId, msg.ChannelId, msg.UserId, msg.Ts,
+            parsed.DriveFileId!, info.Name, Path.GetFileNameWithoutExtension(info.Name),
+            parsed.Description, parsed.Tags, requiresConfirm, mapping.GoogleAccountId,
+            msg.ThumbnailUrl, msg.ThumbnailMimeType), ct);
+
+        await audit.WriteAsync("upload.ingested", module: "youtube-uploads", entityType: "upload_job",
+            entityId: job.Id.ToString(), detail: info.Name, ct: ct);
+
+        if (parsed.Warnings.Count > 0)
+            await ReplyAsync(msg, ":warning: " + string.Join("\n", parsed.Warnings), ct);
+
+        if (requiresConfirm)
+        {
+            var missing = (noDesc: !parsed.HasDescription, noTags: !parsed.HasTags) switch
+            {
+                (true, true) => "description or tags",
+                (true, false) => "description",
+                _ => "tags",
+            };
+            var (text, blocks) = SlackBlocks.Confirm(job.Id, info.Name, missing);
+            var confirmToken = await workspaces.GetBotTokenForChannelAsync(msg.ChannelId, ct);
+            if (confirmToken is not null)
+                await slack.PostMessageAsync(confirmToken, msg.ChannelId, text, blocks, threadTs: msg.Ts, ct: ct);
+            return;
+        }
+
+        Enqueue(job.Id);
+        await status.RefreshQueueAsync(ct);
+    }
+
+    /// <summary>Enqueues stage 2 (the upload) via the shared scheduler. Also called by the interactivity
+    /// handler on confirm. The upload job's <c>[AutomaticRetry(Attempts = 0)]</c> attribute is honored by
+    /// Hangfire regardless of how it was enqueued.</summary>
+    public void Enqueue(Guid jobId)
+        => scheduler.Enqueue<UploadJobHandler>(h => h.RunAsync(jobId, CancellationToken.None));
+
+    private async Task ReplyAsync(SlackMessageRef msg, string text, CancellationToken ct)
+    {
+        var token = await workspaces.GetBotTokenForChannelAsync(msg.ChannelId, ct);
+        if (token is null) return;
+        await slack.PostMessageAsync(token, msg.ChannelId, text, threadTs: msg.Ts, ct: ct);
+    }
+}

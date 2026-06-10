@@ -8,9 +8,10 @@ anything durable belongs in Postgres. Add a row whenever a new owner touches Red
 |---|---|---|---|
 | `conn:*` | Connections subsystem | OAuth `state` (CSRF, one-shot), transient connection caches | short (≤10m) |
 | `auth:*` | Auth subsystem | session / rate-limit helpers | short |
-| `cb:*` | Comment Bridge (Phase 1) | dedup / processing markers | TTL'd |
-| `st:*` | SlackTube (Phase 1) | event-id dedup, per-account daily quota, cancel flags, Slack status ts | TTL'd |
+| `ytu:*` | YouTube Uploads (`Hookline.Modules.YouTubeUploads`, ported from SlackTube) | event-id dedup, per-project daily quota, cancel flags, Slack status ts (48h) | TTL'd |
+| `ytc:*` | YouTube Comments (`Hookline.Modules.YouTubeComments`, Phase 2, ported from YouTubeBridge / Comment Bridge) | dedup / processing markers | TTL'd |
 
-Defined in code at `backend/src/Hookline.Infrastructure/Connections/RedisKeys.cs`
-(`conn:` / `auth:`). The shared Redis runs `--maxmemory-policy noeviction` in production,
-so every key **must** self-expire or be explicitly managed.
+`conn:` / `auth:` are defined at `backend/src/Hookline.Infrastructure/Connections/RedisKeys.cs`;
+`ytu:` at `backend/src/Modules/Hookline.Modules.YouTubeUploads/Infrastructure/RedisKeys.cs`. The
+shared Redis runs `--maxmemory-policy noeviction` in production, so every key **must** self-expire
+or be explicitly managed.

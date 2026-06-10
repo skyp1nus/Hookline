@@ -6,8 +6,8 @@ namespace Hookline.Infrastructure.Connections;
 /// <list type="bullet">
 ///   <item><c>conn:*</c> — Connections (OAuth state, transient caches)</item>
 ///   <item><c>auth:*</c> — Auth (session/rate-limit helpers)</item>
-///   <item><c>cb:*</c> — Comment Bridge (Phase 1)</item>
-///   <item><c>st:*</c> — SlackTube (Phase 1)</item>
+///   <item><c>ytu:*</c> — YouTube Uploads module (ported from SlackTube)</item>
+///   <item><c>ytc:*</c> — YouTube Comments module (Phase 2, from YouTubeBridge)</item>
 /// </list>
 /// </summary>
 public static class RedisKeys

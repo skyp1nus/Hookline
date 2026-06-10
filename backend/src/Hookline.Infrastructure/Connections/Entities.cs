@@ -20,6 +20,8 @@ public sealed class GoogleAccount
     public Guid Id { get; set; } = Guid.NewGuid();
     public string? ChannelId { get; set; }
     public string ChannelTitle { get; set; } = string.Empty;
+    public string? AccountEmail { get; set; }
+    public string? AvatarUrl { get; set; }
     public string RefreshTokenEncrypted { get; set; } = string.Empty;
     public string Scopes { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;

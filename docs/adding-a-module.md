@@ -7,8 +7,9 @@ the previous ones. The cost of a new module is exactly:
 - **1 frontend feature area** (`web/src/app/(app)/<area>/…`)
 - **1 nav entry** (`web/src/lib/nav.ts`)
 
-…with **zero edits to existing modules**. The `Hookline.Modules.Sample` module is the
-worked reference — copy its shape.
+…with **zero edits to existing modules**. The `Hookline.Modules.YouTubeUploads` module is the
+worked reference — copy its shape (schema `youtube_uploads`, route `/api/youtube-uploads`,
+Redis prefix `ytu:*`).
 
 ## Backend
 
@@ -24,7 +25,7 @@ worked reference — copy its shape.
      .UseNpgsql(postgres, npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history", FooDbContext.SchemaName))
      .UseSnakeCaseNamingConvention();
    ```
-   Add an `IDesignTimeDbContextFactory<FooDbContext>` (see `SampleDbContextFactory`) and
+   Add an `IDesignTimeDbContextFactory<FooDbContext>` (see `YouTubeUploadsDbContextFactory`) and
    the initial migration:
    ```bash
    dotnet ef migrations add Initial \
@@ -35,11 +36,11 @@ worked reference — copy its shape.
 
 3. **Implement `FooModule : IModule`** — `RegisterServices` (register the context + jobs),
    `MapEndpoints` (under `/api/foo`), `RegisterJobs`, `RequiredConnections`, and
-   `Migrate` (return the context). See `SampleModule`.
+   `Migrate` (return the context). See `YouTubeUploadsModule`.
 
 4. **Add the module to the host's explicit list** — one line in `Program.cs`:
    ```csharp
-   var modules = new List<IModule> { new SampleModule(), new FooModule() };
+   var modules = new List<IModule> { new YouTubeUploadsModule(), new FooModule() };
    ```
    The host migrates its schema (under the advisory lock), maps its endpoints and
    registers its jobs automatically.
@@ -49,9 +50,10 @@ worked reference — copy its shape.
    `SharedKernel`). Otherwise reuse `ISlackConnections` / `IGoogleConnections`.
 
 6. **Tests:** add unit tests; the architecture-boundary tests
-   (`tests/Hookline.ArchitectureTests`) cover the new module automatically — add its
-   assembly to `ModuleAssemblies` so the "no module references another module" rule
-   includes it.
+   (`tests/Hookline.ArchitectureTests`) **reflection-discover** every `Hookline.Modules.*`
+   assembly next to the test binary, so the new module is covered automatically — just add a
+   `ProjectReference` to it from the ArchitectureTests csproj (so its dll lands in the bin dir).
+   No hand-maintained list to edit.
 
 **Boundaries enforced by the build:** no module references another module; modules
 reference only `SharedKernel` (+ allowed Infrastructure); `Domain` folders have no infra

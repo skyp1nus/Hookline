@@ -53,6 +53,19 @@ services:
       Auth__DevNoAuth: ${AUTH_DEV_NO_AUTH:-false}
       Bootstrap__AdminEmail: ${BOOTSTRAP_ADMIN_EMAIL:-admin@hookline.local}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # ── YouTube Uploads module (ported from SlackTube). Provider OAuth uses the public
+      #    TUNNEL_URL so Slack/Google can reach the callbacks; PublicBaseUrl must match the
+      #    redirect URIs registered in the Slack app + Google OAuth client.
+      YouTubeUploads__Slack__SigningSecret: ${SLACK_SIGNING_SECRET:-}
+      YouTubeUploads__Slack__ClientId: ${SLACK_CLIENT_ID:-}
+      YouTubeUploads__Slack__ClientSecret: ${SLACK_CLIENT_SECRET:-}
+      YouTubeUploads__Slack__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/slack/youtube-uploads/oauth/callback
+      YouTubeUploads__Google__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/google/youtube-uploads/oauth/callback
+      YouTubeUploads__Google__SeedClientId: ${GOOGLE_CLIENT_ID:-}
+      YouTubeUploads__Google__SeedClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      YouTubeUploads__PublicBaseUrl: ${TUNNEL_URL:-http://localhost:8080}
+      YouTubeUploads__AdminPanelUrl: http://localhost:3000
+      YouTubeUploads__TempDownloadDir: /tmp/ytu
     ports:
       - "8080:8080"
     depends_on:

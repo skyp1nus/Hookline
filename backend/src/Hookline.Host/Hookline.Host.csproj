@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Hookline.Infrastructure\Hookline.Infrastructure.csproj" />
     <ProjectReference Include="..\Hookline.SharedKernel\Hookline.SharedKernel.csproj" />
-    <ProjectReference Include="..\Modules\Hookline.Modules.Sample\Hookline.Modules.Sample.csproj" />
+    <ProjectReference Include="..\Modules\Hookline.Modules.YouTubeUploads\Hookline.Modules.YouTubeUploads.csproj" />
   </ItemGroup>
 
   <ItemGroup>

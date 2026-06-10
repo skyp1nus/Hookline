@@ -16,7 +16,7 @@
     <ProjectReference Include="..\..\src\Hookline.SharedKernel\Hookline.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\Hookline.Infrastructure\Hookline.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Hookline.Host\Hookline.Host.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Hookline.Modules.Sample\Hookline.Modules.Sample.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Hookline.Modules.YouTubeUploads\Hookline.Modules.YouTubeUploads.csproj" />
   </ItemGroup>
 
 </Project>

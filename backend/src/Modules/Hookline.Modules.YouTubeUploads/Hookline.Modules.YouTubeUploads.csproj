@@ -1,7 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <RootNamespace>Hookline.Modules.YouTubeUploads</RootNamespace>
+  </PropertyGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hookline.Modules.YouTubeUploads.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -13,6 +21,11 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <PackageReference Include="Hangfire.Core" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Google.Apis.Auth" />
+    <PackageReference Include="Google.Apis.Drive.v3" />
+    <PackageReference Include="Google.Apis.YouTube.v3" />
   </ItemGroup>
 
 </Project>
