@@ -23,6 +23,10 @@ public sealed class SlackClient(
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
     private readonly YouTubeCommentsOptions.SlackSettings _opt = options.Value.Slack;
 
+    // Web panel origin — the proactive "Re-consent to enable removal" button deep-links to its
+    // Connections → Google page when the owning account lacks the force-ssl moderation scope.
+    private readonly string _panelUrl = options.Value.AdminPanelUrl;
+
     // Slack error codes that mean the channel is permanently unusable: retrying will never succeed,
     // so the mapping is deactivated rather than left to fail on every poll.
     private static readonly HashSet<string> ChannelGoneCodes = new(StringComparer.Ordinal)
@@ -107,7 +111,7 @@ public sealed class SlackClient(
     /// <inheritdoc />
     public async Task<SlackPostResult> PostCommentAsync(
         string botToken, string channelId, CommentNotification comment,
-        string? threadTs = null, Guid? mappingId = null, CancellationToken ct = default)
+        string? threadTs = null, Guid? mappingId = null, bool canModerate = false, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(botToken))
             return new SlackPostResult(SlackPostStatus.RetryableFailure);
@@ -120,7 +124,7 @@ public sealed class SlackClient(
             // beneath the comment card (the links live inside the blocks + the button).
             ["unfurl_links"] = false,
             ["unfurl_media"] = false,
-            ["blocks"] = BuildBlocks(comment, mappingId),
+            ["blocks"] = BuildBlocks(comment, mappingId, canModerate, ReConsentUrl()),
         };
         if (threadTs is not null) payload["thread_ts"] = threadTs;
 
@@ -172,11 +176,16 @@ public sealed class SlackClient(
         ? $"Reply from {c.AuthorName} on \"{c.VideoTitle}\""
         : $"New comment from {c.AuthorName} on \"{c.VideoTitle}\"";
 
+    /// <summary>The Connections → Google deep link for the proactive "re-consent" button.</summary>
+    private string ReConsentUrl() => $"{_panelUrl.TrimEnd('/')}/connections/google";
+
     /// <summary>
     /// Builds the Block Kit comment card: a header context (avatar + linked author and video), the
     /// quoted comment, and a primary button that deep links straight to the comment under the video.
+    /// When a mapping id is present, a moderation action is added: an active Reject button if
+    /// <paramref name="canModerate"/>, else a re-consent link to <paramref name="reConsentUrl"/>.
     /// </summary>
-    private static object[] BuildBlocks(CommentNotification c, Guid? mappingId = null)
+    private static object[] BuildBlocks(CommentNotification c, Guid? mappingId, bool canModerate, string reConsentUrl)
     {
         // Canonical www host (matches YouTube's own canonical link) so the comment deep link resolves
         // in one hop. The lc (linked comment) param is YouTube's official comment permalink: on desktop
@@ -203,29 +212,46 @@ public sealed class SlackClient(
             new { type = "button", text = new { type = "plain_text", text = buttonText, emoji = true }, url = commentUrl, action_id = SlackActions.OpenComment, style = "primary" },
         };
 
-        // The "Reject on YouTube" button is only added when a mapping id is supplied (so the callback can
-        // route to the comment + owning channel). It carries an inline confirm dialog — this is an
-        // irreversible-via-Slack moderation action. The label says "Reject/Hide", NOT "Delete": it sets
-        // moderationStatus=rejected (hides the comment), which is reversible in YouTube Studio. The value
-        // is "{mappingId}:{commentId}" — the raw comment id (the API target), not the lc deep-link form.
+        // A moderation action is only added when a mapping id is supplied (so the callback can route to
+        // the comment + owning channel). When the owning Google account holds the force-ssl scope, render
+        // the active "Reject on YouTube" button (an irreversible-via-Slack action, so it carries an inline
+        // confirm; the label says "Reject/Hide" NOT "Delete" — it sets moderationStatus=rejected, which is
+        // reversible in YouTube Studio; the value is "{mappingId}:{commentId}", the raw comment id / API
+        // target, not the lc deep-link form). When it does NOT hold the scope, render a proactive
+        // "Re-consent to enable removal" link to Connections → Google INSTEAD — so an unscoped account
+        // never shows a Reject button that would only fail on click (the click-time NotConnected error
+        // remains as a backstop). The re-consent button is a URL button ⇒ the handler takes no action.
         if (mappingId is { } id)
         {
-            actionElements.Add(new
+            if (canModerate)
             {
-                type = "button",
-                text = new { type = "plain_text", text = "🚫 Reject on YouTube", emoji = true },
-                action_id = SlackActions.RejectComment,
-                value = $"{id}:{c.CommentId}",
-                style = "danger",
-                confirm = new
+                actionElements.Add(new
                 {
-                    title = new { type = "plain_text", text = "Reject this comment?" },
-                    text = new { type = "mrkdwn", text = "This *hides* the comment on YouTube (moderation status → rejected). It can be restored in YouTube Studio, but not from here." },
-                    confirm = new { type = "plain_text", text = "Reject" },
-                    deny = new { type = "plain_text", text = "Cancel" },
+                    type = "button",
+                    text = new { type = "plain_text", text = "🚫 Reject on YouTube", emoji = true },
+                    action_id = SlackActions.RejectComment,
+                    value = $"{id}:{c.CommentId}",
                     style = "danger",
-                },
-            });
+                    confirm = new
+                    {
+                        title = new { type = "plain_text", text = "Reject this comment?" },
+                        text = new { type = "mrkdwn", text = "This *hides* the comment on YouTube (moderation status → rejected). It can be restored in YouTube Studio, but not from here." },
+                        confirm = new { type = "plain_text", text = "Reject" },
+                        deny = new { type = "plain_text", text = "Cancel" },
+                        style = "danger",
+                    },
+                });
+            }
+            else
+            {
+                actionElements.Add(new
+                {
+                    type = "button",
+                    text = new { type = "plain_text", text = "⚠️ Re-consent to enable removal", emoji = true },
+                    action_id = SlackActions.ReConsentGoogle,
+                    url = reConsentUrl,
+                });
+            }
         }
 
         return

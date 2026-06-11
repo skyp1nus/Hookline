@@ -57,6 +57,9 @@ public class DedupTests
 
     private static PollCommentsJob Job(YouTubeCommentsDbContext db, FakeYouTube youtube, FakeSlack slack) =>
         new(db, youtube, slack, new FakeKeyProvider(), new NullScheduler(), new FakeSlackConn(),
+            // No credential providers → CanModerateAsync short-circuits to false; dedup doesn't assert the button.
+            new CommentModerationService(db, Array.Empty<IGoogleChannelCredentials>(), new FakeGoogleConnections(),
+                new FakeYouTubeModerationClient(), new NullAudit(), NullLogger<CommentModerationService>.Instance),
             new NullAudit(), NullLogger<PollCommentsJob>.Instance);
 
     private static async Task<Guid> SeedMappingAsync(YouTubeCommentsDbContext db, bool includeReplies)
@@ -97,7 +100,7 @@ public class DedupTests
         public int Posts;
         public Task<SlackOAuthResult> ExchangeCodeAsync(string code, string redirectUri, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<SlackChannelInfo>> ListChannelsAsync(string botToken, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<SlackChannelInfo>>([]);
-        public Task<SlackPostResult> PostCommentAsync(string botToken, string channelId, CommentNotification comment, string? threadTs = null, Guid? mappingId = null, CancellationToken ct = default)
+        public Task<SlackPostResult> PostCommentAsync(string botToken, string channelId, CommentNotification comment, string? threadTs = null, Guid? mappingId = null, bool canModerate = false, CancellationToken ct = default)
         {
             Posts++;
             return Task.FromResult(new SlackPostResult(SlackPostStatus.Posted, $"ts-{Posts}"));

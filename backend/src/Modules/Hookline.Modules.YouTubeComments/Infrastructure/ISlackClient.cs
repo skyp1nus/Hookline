@@ -62,14 +62,16 @@ public interface ISlackClient
 
     /// <summary>
     /// Posts a Block Kit comment notification to <paramref name="channelId"/>, optionally threaded
-    /// under <paramref name="threadTs"/>. When <paramref name="mappingId"/> is supplied the card also
-    /// carries a "Reject on YouTube" button (its value routes the interactivity callback). The returned
-    /// <see cref="SlackPostResult"/> distinguishes a successful post (with its message ts) from a
-    /// retryable failure and a permanently-gone channel.
+    /// under <paramref name="threadTs"/>. When <paramref name="mappingId"/> is supplied the card carries
+    /// a moderation action: the active "Reject on YouTube" button when <paramref name="canModerate"/> is
+    /// true (the owning Google account holds the force-ssl scope), otherwise a proactive "Re-consent to
+    /// enable removal" link to Connections → Google — so an unscoped account never shows a Reject button
+    /// that would only fail on click. The returned <see cref="SlackPostResult"/> distinguishes a
+    /// successful post (with its message ts) from a retryable failure and a permanently-gone channel.
     /// </summary>
     Task<SlackPostResult> PostCommentAsync(
         string botToken, string channelId, CommentNotification comment,
-        string? threadTs = null, Guid? mappingId = null, CancellationToken ct = default);
+        string? threadTs = null, Guid? mappingId = null, bool canModerate = false, CancellationToken ct = default);
 
     /// <summary>
     /// POSTs a payload to a Slack <c>response_url</c> from an interaction (no bot token needed). Used to

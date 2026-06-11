@@ -77,12 +77,13 @@ public class SlackCardTests
     }
 
     [Fact]
-    public async Task Reject_button_added_with_confirm_when_mapping_id_supplied()
+    public async Task Reject_button_added_with_confirm_when_mapping_id_supplied_and_can_moderate()
     {
         var h = new StubHandler();
         var mappingId = Guid.NewGuid();
 
-        await Client(h).PostCommentAsync("xoxb-token", "C123", TopLevel(), mappingId: mappingId);
+        // canModerate: true ⇒ the owning Google account holds the force-ssl scope, so the active Reject renders.
+        await Client(h).PostCommentAsync("xoxb-token", "C123", TopLevel(), mappingId: mappingId, canModerate: true);
 
         using var doc = JsonDocument.Parse(h.LastBody!);
         var elements = doc.RootElement.GetProperty("blocks")[2].GetProperty("elements");
@@ -97,6 +98,33 @@ public class SlackCardTests
         Assert.True(reject.TryGetProperty("confirm", out var confirm));
         Assert.Contains("Reject", reject.GetProperty("text").GetProperty("text").GetString());
         Assert.Contains("hides", confirm.GetProperty("text").GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task Reconsent_link_replaces_reject_when_account_cannot_moderate()
+    {
+        var h = new StubHandler();
+        var mappingId = Guid.NewGuid();
+
+        // mappingId present but the owning account lacks force-ssl (canModerate: false) ⇒ a proactive
+        // "Re-consent to enable removal" LINK to Connections → Google, NOT an active Reject button that
+        // would only fail on click.
+        await Client(h).PostCommentAsync("xoxb-token", "C123", TopLevel(), mappingId: mappingId, canModerate: false);
+
+        using var doc = JsonDocument.Parse(h.LastBody!);
+        var elements = doc.RootElement.GetProperty("blocks")[2].GetProperty("elements");
+        Assert.Equal(2, elements.GetArrayLength());
+        Assert.Equal("open_comment", elements[0].GetProperty("action_id").GetString());
+
+        var gated = elements[1];
+        Assert.Equal("reconsent_google", gated.GetProperty("action_id").GetString());
+        Assert.EndsWith("/connections/google", gated.GetProperty("url").GetString());
+        // It is a pure URL link: no reject value, no confirm dialog, no server action.
+        Assert.False(gated.TryGetProperty("value", out _));
+        Assert.False(gated.TryGetProperty("confirm", out _));
+        // And NO active reject button is present anywhere on the card.
+        foreach (var el in elements.EnumerateArray())
+            Assert.NotEqual("reject_comment", el.GetProperty("action_id").GetString());
     }
 
     [Fact]

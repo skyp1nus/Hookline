@@ -28,6 +28,7 @@ public sealed class PollCommentsJob(
     IYouTubeApiKeyProvider keys,
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
+    CommentModerationService moderation,
     ICommentsAudit audit,
     ILogger<PollCommentsJob> logger)
 {
@@ -148,13 +149,18 @@ public sealed class PollCommentsJob(
                 // its parent without a database round-trip.
                 var tsThisRun = new Dictionary<string, string>(StringComparer.Ordinal);
 
+                // Whether the owning Google account can moderate (force-ssl) — decides whether each card
+                // shows an active Reject button or the proactive "re-consent to enable" link. Resolved
+                // once per run for the channel, not per comment.
+                var canModerate = await moderation.CanModerateAsync(ytChannel.YouTubeChannelId, ct);
+
                 foreach (var comment in newComments)
                 {
                     var title = titlesResult.Titles.TryGetValue(comment.VideoId, out var t) ? t : comment.VideoId;
                     var notification = ToNotification(comment, title);
                     var threadTs = await ResolveThreadTsAsync(mappingId, comment, tsThisRun, ct);
 
-                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, ct);
+                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, canModerate, ct);
 
                     if (result.Status == SlackPostStatus.Posted)
                     {

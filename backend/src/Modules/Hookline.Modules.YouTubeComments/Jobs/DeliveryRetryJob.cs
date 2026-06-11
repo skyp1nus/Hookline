@@ -24,6 +24,7 @@ public sealed class DeliveryRetryJob(
     ISlackClient slack,
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
+    CommentModerationService moderation,
     IOptions<YouTubeCommentsOptions> options,
     ICommentsAudit audit,
     ILogger<DeliveryRetryJob> logger)
@@ -82,7 +83,8 @@ public sealed class DeliveryRetryJob(
             }
 
             var threadTs = await ResolveThreadTsAsync(row.MappingId, notification, ct);
-            var result = await slack.PostCommentAsync(target.BotToken, target.ChannelId, notification, threadTs, row.MappingId, ct);
+            var result = await slack.PostCommentAsync(
+                target.BotToken, target.ChannelId, notification, threadTs, row.MappingId, target.CanModerate, ct);
 
             if (result.Status == SlackPostStatus.Posted)
             {
@@ -161,7 +163,7 @@ public sealed class DeliveryRetryJob(
         var info = await db.ChannelMappings
             .AsNoTracking()
             .Where(m => m.Id == mappingId && m.IsActive)
-            .Select(m => new { m.SlackChannel!.WorkspaceId, m.SlackChannel.SlackChannelId })
+            .Select(m => new { m.SlackChannel!.WorkspaceId, m.SlackChannel.SlackChannelId, m.YouTubeChannel!.YouTubeChannelId })
             .FirstOrDefaultAsync(ct);
 
         PostTarget? target = null;
@@ -169,7 +171,12 @@ public sealed class DeliveryRetryJob(
         {
             var botToken = await slackConnections.GetBotTokenAsync(info.WorkspaceId, ct);
             if (!string.IsNullOrEmpty(botToken))
-                target = new PostTarget(botToken, info.SlackChannelId);
+            {
+                // Cache the force-ssl capability with the target so a batch spanning many rows of the same
+                // mapping resolves it once — gates Reject vs. the proactive re-consent link on each card.
+                var canModerate = await moderation.CanModerateAsync(info.YouTubeChannelId, ct);
+                target = new PostTarget(botToken, info.SlackChannelId, canModerate);
+            }
         }
 
         cache[mappingId] = target;
@@ -202,5 +209,5 @@ public sealed class DeliveryRetryJob(
         logger.LogWarning("Mapping {MappingId} deactivated during delivery retry: Slack channel gone", mappingId);
     }
 
-    private sealed record PostTarget(string BotToken, string ChannelId);
+    private sealed record PostTarget(string BotToken, string ChannelId, bool CanModerate);
 }

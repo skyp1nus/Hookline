@@ -27,6 +27,7 @@ public sealed class DeepReplySweepJob(
     IYouTubeApiKeyProvider keys,
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
+    CommentModerationService moderation,
     ICommentsAudit audit,
     ILogger<DeepReplySweepJob> logger)
 {
@@ -152,13 +153,17 @@ public sealed class DeepReplySweepJob(
                         .ToListAsync(ct))
                     .ToDictionary(x => x.CommentId, x => x.SlackMessageTs!, StringComparer.Ordinal);
 
+                // Force-ssl capability for the owning channel — gates the Reject button vs. the proactive
+                // re-consent link. Resolved once per sweep, not per reply.
+                var canModerate = await moderation.CanModerateAsync(ytChannel.YouTubeChannelId, ct);
+
                 foreach (var reply in toPost.OrderBy(r => r.PublishedAt))
                 {
                     var title = titles.Titles.TryGetValue(reply.VideoId, out var t) ? t : reply.VideoId;
                     var notification = PollCommentsJob.ToNotification(reply, title);
                     string? threadTs = reply.ParentCommentId is { } pid && tsMap.TryGetValue(pid, out var ts) ? ts : null;
 
-                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, ct);
+                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, canModerate, ct);
 
                     if (result.Status == SlackPostStatus.Posted)
                     {
