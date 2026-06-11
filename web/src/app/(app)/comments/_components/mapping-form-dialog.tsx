@@ -23,7 +23,12 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { apiErrorMessage } from "@/lib/api/client";
-import { useCreateMapping, useMappingOptions, useUpdateMapping } from "@/features/comments/hooks";
+import {
+  useCreateChannel,
+  useCreateMapping,
+  useMappingOptions,
+  useUpdateMapping,
+} from "@/features/comments/hooks";
 import {
   POLLING_FREQUENCY_OPTIONS,
   REPLY_SCAN_FREQUENCY_OPTIONS,
@@ -51,9 +56,11 @@ export function MappingFormDialog({
   const optionsQuery = useMappingOptions(open && !isEdit);
   const createMapping = useCreateMapping();
   const updateMapping = useUpdateMapping();
+  const createChannel = useCreateChannel();
 
   const [youTubeChannelId, setYouTubeChannelId] = useState("");
   const [slackChannelId, setSlackChannelId] = useState("");
+  const [channelInput, setChannelInput] = useState("");
   const [frequency, setFrequency] = useState<PollingFrequency>(15);
   const [includeReplies, setIncludeReplies] = useState(false);
   const [replySweepFrequency, setReplySweepFrequency] = useState<ReplyScanFrequency>(0);
@@ -69,6 +76,7 @@ export function MappingFormDialog({
     } else {
       setYouTubeChannelId("");
       setSlackChannelId("");
+      setChannelInput("");
       setFrequency(15);
       setIncludeReplies(false);
       setReplySweepFrequency(0);
@@ -77,6 +85,22 @@ export function MappingFormDialog({
   }, [open, mapping]);
 
   const busy = createMapping.isPending || updateMapping.isPending;
+
+  // Add a tracked channel inline (folded in from the removed Channels page) so a mapping can be created
+  // end-to-end without leaving this dialog. The backend resolves the URL/@handle/id against the YouTube
+  // Data API; on success the options query refetches and we auto-select the freshly added channel.
+  async function onAddChannel() {
+    const value = channelInput.trim();
+    if (!value) return;
+    try {
+      const channel = await createChannel.mutateAsync({ input: value });
+      setChannelInput("");
+      setYouTubeChannelId(channel.id);
+      toast.success(`Added ${channel.title}.`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    }
+  }
   const channels = optionsQuery.data?.youTubeChannels ?? [];
   const slackChannels = optionsQuery.data?.slackChannels ?? [];
 
@@ -143,7 +167,7 @@ export function MappingFormDialog({
                 <Label htmlFor="yt-channel">YouTube channel</Label>
                 <Select value={youTubeChannelId} onValueChange={setYouTubeChannelId}>
                   <SelectTrigger id="yt-channel">
-                    <SelectValue placeholder={channels.length ? "Select a channel…" : "No channels — add one first"} />
+                    <SelectValue placeholder={channels.length ? "Select a channel…" : "No channels yet — add one below"} />
                   </SelectTrigger>
                   <SelectContent>
                     {channels.map((c) => (
@@ -153,6 +177,33 @@ export function MappingFormDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="add-channel"
+                    placeholder="Add by URL, @handle, or channel id"
+                    value={channelInput}
+                    onChange={(e) => setChannelInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      // Enter inside the dialog form would submit the mapping; intercept it for the add action.
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        onAddChannel();
+                      }
+                    }}
+                    disabled={createChannel.isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onAddChannel}
+                    disabled={createChannel.isPending || !channelInput.trim()}
+                  >
+                    {createChannel.isPending ? "Adding…" : "Add"}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Not tracked yet? Add it here — it&apos;s selected automatically once resolved.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1.5">

@@ -1,17 +1,12 @@
 "use client";
 
-import { ChevronRight, MessageSquare } from "lucide-react";
-import { useRouter } from "next/navigation";
-
 import { Sparkline } from "@/components/charts";
 import { PageHeading } from "@/components/page-heading";
 import { ProgressBar } from "@/components/progress-bar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber } from "@/lib/format";
-import { ROUTE_PATH } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { useChannels, useCommentStats, useCommentsTimeline } from "@/features/comments/hooks";
 import { type DashboardStats, type YouTubeChannelDto } from "@/features/comments/types";
@@ -57,7 +52,6 @@ function toStatCards(s: DashboardStats): DashStat[] {
 }
 
 export default function CommentsDashboardPage() {
-  const router = useRouter();
   const { data: stats, isLoading: statsLoading } = useCommentStats();
   const { data: channelsData, isLoading: channelsLoading } = useChannels();
   const { data: timeline, isLoading: timelineLoading } = useCommentsTimeline();
@@ -73,12 +67,6 @@ export default function CommentsDashboardPage() {
       <PageHeading
         title="Dashboard"
         description="Live snapshot of YouTube → Slack comment forwarding."
-        actions={
-          <Button size="sm" onClick={() => router.push(ROUTE_PATH["ytc-feed"])}>
-            <MessageSquare className="size-3.5" />
-            Open feed
-          </Button>
-        }
       />
 
       {/* Stat cards */}
@@ -99,15 +87,9 @@ export default function CommentsDashboardPage() {
       {/* Channels by mappings + 24h comments timeline */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_3fr]">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Channels</CardTitle>
-              <CardDescription>Tracked channels by mapping count</CardDescription>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => router.push(ROUTE_PATH["ytc-channels"])}>
-              Channels
-              <ChevronRight className="size-3.5" />
-            </Button>
+          <CardHeader>
+            <CardTitle>Channels</CardTitle>
+            <CardDescription>Tracked channels by mapping count</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {channelsLoading ? (
@@ -121,15 +103,9 @@ export default function CommentsDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Comments · last 24h</CardTitle>
-              <CardDescription>Comments processed per hour</CardDescription>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => router.push(ROUTE_PATH["ytc-feed"])}>
-              Feed
-              <ChevronRight className="size-3.5" />
-            </Button>
+          <CardHeader>
+            <CardTitle>Comments · last 24h</CardTitle>
+            <CardDescription>Comments processed per hour</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {timelineLoading ? (

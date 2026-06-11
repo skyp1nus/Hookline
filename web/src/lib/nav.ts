@@ -21,8 +21,6 @@ import type { IconType, Platform } from "./platforms";
 export type RouteId =
   | "overview"
   | "ytc-dashboard"
-  | "ytc-feed"
-  | "ytc-channels"
   | "ytc-mappings"
   | "ytu-queue"
   | "ytu-history"
@@ -83,8 +81,6 @@ const commentsTool: ToolDef = {
   defaultOpen: true,
   children: [
     { id: "ytc-dashboard", path: "/comments", label: () => "Dashboard", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Dashboard`, module: "youtube-comments" },
-    { id: "ytc-feed", path: "/comments/feed", label: () => "Feed", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Feed`, module: "youtube-comments" },
-    { id: "ytc-channels", path: "/comments/channels", label: (p) => p.channels, icon: (p) => p.icon, cmdIcon: (p) => p.icon, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · ${p.channels}`, module: "youtube-comments" },
     { id: "ytc-mappings", path: "/comments/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Mappings`, module: "youtube-comments" },
   ],
 };

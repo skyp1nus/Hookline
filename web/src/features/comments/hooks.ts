@@ -110,7 +110,9 @@ export function useDeleteMapping() {
   });
 }
 
-// ── channels (add / remove) ──
+// ── channels (add) ──
+// The standalone Channels page was removed; the only entry point for tracking a channel is now the inline
+// add-by-URL/@handle/id field in the comment mapping dialog, so creating a mapping still works end-to-end.
 
 export function useCreateChannel() {
   const qc = useQueryClient();
@@ -118,20 +120,6 @@ export function useCreateChannel() {
     mutationFn: (body: AddChannelInput) => api.post<YouTubeChannelDto>("/youtube-comments/youtube/channels", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comments", "channels"] });
-      qc.invalidateQueries({ queryKey: ["comments", "mapping-options"] });
-      qc.invalidateQueries({ queryKey: ["comments", "stats"] });
-    },
-  });
-}
-
-export function useDeleteChannel() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.del(`/youtube-comments/youtube/channels/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", "channels"] });
-      // Deleting a channel cascades its mappings server-side.
-      qc.invalidateQueries({ queryKey: ["comments", "mappings"] });
       qc.invalidateQueries({ queryKey: ["comments", "mapping-options"] });
       qc.invalidateQueries({ queryKey: ["comments", "stats"] });
     },
