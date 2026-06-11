@@ -169,14 +169,6 @@ export interface LogEntry {
   ago: string;
 }
 
-export interface TeamMember {
-  id: string;
-  name: string;
-  email: string;
-  role: "Owner" | "Admin" | "Editor" | "Viewer";
-  you?: boolean;
-}
-
 export const DATA = {
   stats: [
     { id: "mappings", label: "Active mappings", value: "12", sub: "+2 this week", trend: "up", spark: [6, 7, 7, 8, 9, 10, 10, 11, 12] },
@@ -286,25 +278,6 @@ export const DATA = {
     { id: "u4", slack: "#team-uploads", workspace: "Side Project Co.", account: "Side Project Co.", key: "side-yt-01", privacy: "Unlisted", playlist: "Customer stories", active: false, up24: 0 },
   ] as UploadMapping[],
 
-  unifiedLogs: [
-    { id: "l1", tool: "uploads", level: "error", message: "Upload failed — YouTube API quota exceeded (key prod-yt-02)", target: "promo-spring-sale.mov", time: "13:58:04", ago: "21m ago" },
-    { id: "l2", tool: "comments", level: "info", message: "Forwarded 14 new comments to #yt-comments", target: "Daniel’s Channel", time: "13:52:10", ago: "27m ago" },
-    { id: "l3", tool: "comments", level: "warn", message: "Held 2 comments flagged as spam (not forwarded)", target: "Tutorials by Daniel", time: "13:45:51", ago: "33m ago" },
-    { id: "l4", tool: "uploads", level: "success", message: "Uploaded “Tutorial — advanced filters.mp4” as Private", target: "youtu.be/x7Kd9", time: "13:21:33", ago: "57m ago" },
-    { id: "l5", tool: "connections", level: "success", message: "API key prod-yt-01 validated successfully", target: "Daniel’s Channel", time: "13:05:12", ago: "1h ago" },
-    { id: "l6", tool: "comments", level: "info", message: "Paused mapping “Side Project → #side-comments”", target: "by Daniel C.", time: "12:58:40", ago: "1h ago" },
-    { id: "l7", tool: "uploads", level: "info", message: "Download started from Drive · northwind-customer-story.mov", target: "1.21 GB", time: "12:40:02", ago: "1h ago" },
-    { id: "l8", tool: "system", level: "warn", message: "Worker pool scaled down to 2 (low queue depth)", target: "scheduler", time: "12:12:19", ago: "2h ago" },
-    { id: "l9", tool: "connections", level: "error", message: "Slack OAuth token refresh failed — re-auth required", target: "Side Project Co.", time: "11:30:55", ago: "2h ago" },
-    { id: "l10", tool: "comments", level: "success", message: "Forwarded 9 new comments to #yt-superfans", target: "Daniel’s Channel", time: "11:18:07", ago: "3h ago" },
-  ] as LogEntry[],
-
-  team: [
-    { id: "t1", name: "Daniel Cole", email: "daniel@hookline.io", role: "Owner", you: true },
-    { id: "t2", name: "Maya Reyes", email: "maya@hookline.io", role: "Admin" },
-    { id: "t3", name: "Priya Shah", email: "priya@hookline.io", role: "Editor" },
-    { id: "t4", name: "Jonas Berg", email: "jonas@contractor.io", role: "Viewer" },
-  ] as TeamMember[],
 };
 
 export type AppData = typeof DATA;
