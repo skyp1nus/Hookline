@@ -165,37 +165,24 @@ export default function OverviewPage() {
                 ))}
               </div>
             ) : (
-              <>
-                <div>
-                  {health.map((h, i) => (
-                    <div key={h.id} className={cn(i > 0 && "border-t")}>
-                      <HealthRow
-                        item={h}
-                        onClick={() =>
-                          go(
-                            h.id === "slack"
-                              ? "conn-slack"
-                              : h.id === "google"
-                                ? "conn-google"
-                                : "conn-keys",
-                          )
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => go("conn-keys")}
-                  className="mt-3 flex w-full items-start gap-2.5 rounded-lg bg-warn-bg p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <CircleAlert className="mt-px size-4 shrink-0 text-warn" />
-                  <div className="text-[12.5px] text-[color-mix(in_oklch,var(--warn)_70%,var(--foreground))]">
-                    <span className="font-semibold">prod-yt-02</span> is at 87% of daily quota.
-                    Rotate keys before the next batch.
+              <div>
+                {health.map((h, i) => (
+                  <div key={h.id} className={cn(i > 0 && "border-t")}>
+                    <HealthRow
+                      item={h}
+                      onClick={() =>
+                        go(
+                          h.id === "slack"
+                            ? "conn-slack"
+                            : h.id === "google"
+                              ? "conn-google"
+                              : "conn-keys",
+                        )
+                      }
+                    />
                   </div>
-                </button>
-              </>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>

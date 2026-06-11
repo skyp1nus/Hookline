@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Moon, Search, Sun } from "lucide-react";
+import { Moon, Search, Sun } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Fragment, useEffect, useState } from "react";
@@ -69,16 +69,6 @@ export function SiteHeader({ onOpenCommand }: { onOpenCommand: () => void }) {
         <span className="hidden pr-4 sm:inline">Search&hellip;</span>
         <Kbd>⌘K</Kbd>
       </button>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" className={`relative ${iconBtn}`} aria-label="Notifications">
-            <Bell className="size-[17px]" />
-            <span className="absolute right-2 top-2 size-1.5 rounded-full bg-primary" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Notifications</TooltipContent>
-      </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsUpDown, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { ChevronsUpDown, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
@@ -67,11 +67,7 @@ export function UserMenu() {
           >
             <DropdownMenuLabel className="font-[540]">{name}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="size-4" />
-              Account
-            </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => router.push("/system/settings")}>
               <Settings className="size-4" />
               Settings
             </DropdownMenuItem>

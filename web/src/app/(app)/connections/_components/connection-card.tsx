@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { type ComponentType, type ReactNode, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { NotYet } from "@/components/not-yet";
 import { StatusBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -67,30 +66,21 @@ export function ConnectionCard({
           <div className="mono mt-0.5 text-xs text-muted-foreground">{connection.handle}</div>
         </div>
         <div className="mt-2.5 text-[12.5px] text-muted-foreground">{connection.meta}</div>
-        <div className="mt-4 flex gap-2">
-          {/* Manage has no backend endpoint yet — honest-disabled rather than inert. */}
-          <NotYet className="flex-1" reason="Manage isn't wired yet — backend pending.">
-            <Button variant="outline" size="sm" className="pointer-events-none w-full" disabled>
-              Manage
-            </Button>
-          </NotYet>
-          {onDisconnect ? (
+        {/* Disconnect is the only real action; a generic "Manage" had no distinct backend purpose and was
+            removed rather than left disabled. The action renders only when a real disconnect handler is
+            supplied (every current caller does) — never a faked/disabled button. */}
+        {onDisconnect ? (
+          <div className="mt-4 flex gap-2">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="text-muted-foreground"
+              className="w-full text-muted-foreground"
               onClick={() => setConfirmOpen(true)}
             >
               Disconnect
             </Button>
-          ) : (
-            <NotYet reason="Disconnect isn't wired yet — backend pending.">
-              <Button variant="ghost" size="sm" className="pointer-events-none text-muted-foreground" disabled>
-                Disconnect
-              </Button>
-            </NotYet>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {onDisconnect ? (
