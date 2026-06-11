@@ -5,6 +5,7 @@ using Hookline.Modules.YouTubeComments.Jobs;
 
 using Hookline.SharedKernel.Connections;
 using Hookline.SharedKernel.Jobs;
+using Hookline.SharedKernel.Maintenance;
 using Hookline.SharedKernel.Messaging;
 using Hookline.SharedKernel.Modules;
 
@@ -75,6 +76,9 @@ public sealed class YouTubeCommentsModule : IModule
         // React to shared Connections disconnects (deactivate mappings / prune quota) — guide §5.
         services.AddScoped<IIntegrationEventHandler<SlackWorkspaceDisconnected>, SlackWorkspaceDisconnectedHandler>();
         services.AddScoped<IIntegrationEventHandler<YouTubeApiKeyDisconnected>, YouTubeApiKeyDisconnectedHandler>();
+
+        // System "Danger Zone" fan-out (pause-all / reset) — host resolves it via the shared contract.
+        services.AddScoped<IMaintenanceControl, CommentsMaintenanceControl>();
 
         // Startup: reconcile per-mapping recurring jobs + register the static delivery/retention jobs.
         services.AddHostedService<YouTubeCommentsStartupService>();

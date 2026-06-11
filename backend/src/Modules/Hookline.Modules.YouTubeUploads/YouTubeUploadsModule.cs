@@ -5,6 +5,7 @@ using Hookline.Modules.YouTubeUploads.Jobs;
 
 using Hookline.SharedKernel.Connections;
 using Hookline.SharedKernel.Jobs;
+using Hookline.SharedKernel.Maintenance;
 using Hookline.SharedKernel.Messaging;
 using Hookline.SharedKernel.Modules;
 
@@ -72,6 +73,9 @@ public sealed class YouTubeUploadsModule : IModule
         // React to shared Connections disconnects (deactivate bindings/mappings) — guide §5.
         services.AddScoped<IIntegrationEventHandler<GoogleAccountDisconnected>, GoogleAccountDisconnectedHandler>();
         services.AddScoped<IIntegrationEventHandler<SlackWorkspaceDisconnected>, SlackWorkspaceDisconnectedHandler>();
+
+        // System "Danger Zone" fan-out (pause-all / reset) — host resolves it via the shared contract.
+        services.AddScoped<IMaintenanceControl, UploadsMaintenanceControl>();
 
         // Startup: seed env project + self-heal interrupted jobs (after migrations).
         services.AddHostedService<YouTubeUploadsStartupService>();

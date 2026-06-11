@@ -3,6 +3,7 @@ using Hangfire.PostgreSql;
 
 using Hookline.Infrastructure.Audit;
 using Hookline.Infrastructure.Auth;
+using Hookline.Infrastructure.Caching;
 using Hookline.Infrastructure.Connections;
 using Hookline.Infrastructure.Health;
 using Hookline.Infrastructure.Jobs;
@@ -13,6 +14,7 @@ using Hookline.Infrastructure.Settings;
 
 using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Auth;
+using Hookline.SharedKernel.Caching;
 using Hookline.SharedKernel.Connections;
 using Hookline.SharedKernel.Jobs;
 using Hookline.SharedKernel.Messaging;
@@ -73,6 +75,9 @@ public static class DependencyInjection
             return ConnectionMultiplexer.Connect(options);
         });
 
+        // Prefix purge for the module data-reset path (best-effort; a cache outage never fails a reset).
+        services.AddSingleton<ICachePurge, RedisCachePurge>();
+
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUserAccessor>();
 
@@ -89,6 +94,7 @@ public static class DependencyInjection
         services.AddScoped<IYouTubeApiKeyConnections, YouTubeApiKeyConnections>();
         services.AddScoped<IConnectionCatalog, ConnectionCatalog>();
         services.AddScoped<ISettingsStore, SettingsStore>();
+        services.AddScoped<AlertSettingsService>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<IAuditLogReader, AuditLogReader>();
         services.AddScoped<UserService>();

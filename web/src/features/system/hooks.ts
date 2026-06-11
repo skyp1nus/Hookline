@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import { type LogEntry } from "@/lib/mock-data";
@@ -106,5 +106,63 @@ export function useLogs(module?: LogModule, pageSize = 100) {
       return res.items.map(toLogEntry);
     },
     refetchInterval: 10_000,
+  });
+}
+
+// ── Alerts preferences (persisted server-side via the shared settings store) ──
+
+export interface AlertSettings {
+  uploadFailures: boolean;
+  quotaWarnings: boolean;
+  oauthExpiry: boolean;
+  weeklyDigest: boolean;
+}
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["system", "alerts"],
+    queryFn: () => api.get<AlertSettings>("/system/alerts"),
+  });
+}
+
+/** Persist a partial change to the alert toggles; the response is the full saved state. */
+export function useUpdateAlerts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<AlertSettings>) => api.patch<AlertSettings>("/system/alerts", patch),
+    onSuccess: (saved) => qc.setQueryData(["system", "alerts"], saved),
+  });
+}
+
+// ── Danger Zone (destructive — every call is real + audited backend-side) ──
+
+/** The cross-module fan-out is per-module isolated: `partial` is true when at least one module failed while
+ *  others succeeded (the succeeded ones DID change), with `failed` naming which. The caller must surface
+ *  this rather than claim full success. */
+interface FanOutResult {
+  partial?: boolean;
+  failed?: { module: string; error: string }[];
+}
+
+/** Pause every comment mapping AND upload route at once (tears down the comment per-mapping jobs too). */
+export function usePauseAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ paused: number } & FanOutResult>("/system/pause-all"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["uploads", "mappings"] });
+      qc.invalidateQueries({ queryKey: ["comments", "mappings"] });
+      qc.invalidateQueries({ queryKey: ["system", "logs"] });
+    },
+  });
+}
+
+/** Wipe operational data (jobs/history/dedup/quota) for both modules. Keeps mappings, connections, audit. */
+export function useResetData() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The backend requires the literal confirm phrase; the type-to-confirm UI gates reaching this call.
+    mutationFn: () => api.post<{ cleared: number } & FanOutResult>("/system/reset", { confirm: "RESET" }),
+    onSuccess: () => qc.invalidateQueries(),
   });
 }
