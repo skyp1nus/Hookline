@@ -1,0 +1,96 @@
+name: hookline
+
+# ── Hookline PRODUCTION stack ────────────────────────────────────────────────
+# Owns NO infrastructure: Postgres, Redis and Caddy live in the shared /opt/shared
+# stack on the existing Hetzner host. Both services join the pre-created external
+# "web" network and reach the shared Postgres/Redis by their network aliases
+# (postgres / redis). The shared Caddy fronts TLS + routing (see deploy/Caddyfile).
+#
+# Container names are PINNED so the shared Caddy upstreams and the frontend's
+# server-side BFF target (BACKEND_URL=http://hookline-backend-1:8080) stay stable
+# across redeploys — service names alone collide on the shared "web" network.
+#
+# No host ports are published: nothing is reachable except through the shared Caddy.
+# All secrets come from /opt/hookline/.env (see deploy/.env.prod.example).
+#
+# To bring this up LOCALLY for a prod-profile smoke test (without deploying), layer
+# deploy/local/docker-compose.prod-local.yml on top — it supplies the shared infra,
+# builds the images locally, and publishes ports. See deploy/README.md.
+
+services:
+  backend:
+    image: ghcr.io/${GH_REPO:-skyp1nus/hookline}/backend:${IMAGE_TAG:-latest}
+    container_name: hookline-backend-1
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_gcServer: "0"                       # workstation GC: lower idle RSS inside the 640m cap
+
+      # Shared infra (aliases on the "web" network). Password must equal the role
+      # password created in the shared Postgres (HOOKLINE_DB_PASSWORD in /opt/shared/.env).
+      ConnectionStrings__Postgres: ${ConnectionStrings__Postgres}
+      ConnectionStrings__Redis: ${ConnectionStrings__Redis:-redis:6379}
+
+      # Security primitives — the backend REFUSES TO BOOT in Production if any of these
+      # is empty or a dev placeholder (GuardSecurityConfig). NEVER change TokenEncryption__Key
+      # after launch — it would make every stored Slack/Google/YouTube secret undecryptable.
+      TokenEncryption__Key: ${TokenEncryption__Key}
+      Identity__SigningKey: ${Identity__SigningKey}          # must equal frontend IDENTITY_SIGNING_KEY
+      BackendAuth__AdminToken: ${BackendAuth__AdminToken}    # must equal frontend BACKEND_ADMIN_TOKEN (X-Admin-Token)
+
+      # First-run bootstrap admin (seeded only when the auth.users table is empty).
+      Bootstrap__AdminEmail: ${Bootstrap__AdminEmail:-admin@hookline.local}
+      Bootstrap__AdminPassword: ${Bootstrap__AdminPassword}
+
+      # ── YouTube Uploads module ──────────────────────────────────────────────
+      # RedirectUris MUST match the URIs registered in the Slack app + Google OAuth
+      # client byte-for-byte (see deploy/README.md OAuth checklist).
+      YouTubeUploads__Slack__SigningSecret: ${YouTubeUploads__Slack__SigningSecret}
+      YouTubeUploads__Slack__ClientId: ${YouTubeUploads__Slack__ClientId}
+      YouTubeUploads__Slack__ClientSecret: ${YouTubeUploads__Slack__ClientSecret}
+      YouTubeUploads__Slack__RedirectUri: ${App__PublicBaseUrl}/slack/youtube-uploads/oauth/callback
+      YouTubeUploads__Google__RedirectUri: ${App__PublicBaseUrl}/google/youtube-uploads/oauth/callback
+      YouTubeUploads__Google__SeedClientId: ${YouTubeUploads__Google__SeedClientId}
+      YouTubeUploads__Google__SeedClientSecret: ${YouTubeUploads__Google__SeedClientSecret}
+      YouTubeUploads__PublicBaseUrl: ${App__PublicBaseUrl}
+      YouTubeUploads__AdminPanelUrl: ${App__PublicBaseUrl}
+      YouTubeUploads__TempDownloadDir: /tmp/ytu
+
+      # ── YouTube Comments module ─────────────────────────────────────────────
+      # Comments uses Slack OAuth + YouTube Data API KEYS (no Google OAuth). The API
+      # keys are entered in-app (Connections), not via env. SigningSecret is REQUIRED in
+      # Production (GuardSecurityConfig) — it verifies the "Reject on YouTube" callback.
+      YouTubeComments__Slack__SigningSecret: ${YouTubeComments__Slack__SigningSecret}
+      YouTubeComments__Slack__ClientId: ${YouTubeComments__Slack__ClientId}
+      YouTubeComments__Slack__ClientSecret: ${YouTubeComments__Slack__ClientSecret}
+      YouTubeComments__Slack__RedirectUri: ${App__PublicBaseUrl}/slack/youtube-comments/oauth/callback
+      YouTubeComments__PublicBaseUrl: ${App__PublicBaseUrl}
+      YouTubeComments__AdminPanelUrl: ${App__PublicBaseUrl}
+    mem_limit: 640m
+    networks: [web]
+
+  frontend:
+    image: ghcr.io/${GH_REPO:-skyp1nus/hookline}/frontend:${IMAGE_TAG:-latest}
+    container_name: hookline-frontend-1
+    restart: unless-stopped
+    depends_on: [backend]
+    environment:
+      NODE_ENV: production
+      # Server-side BFF target (admin API proxy). Internal, by pinned container name.
+      BACKEND_URL: http://hookline-backend-1:8080
+      # Public origin — used server-side to render OAuth links; the client bundle already
+      # has this baked at BUILD time (see .github/workflows/ci.yml build-arg). A runtime
+      # value cannot override the inlined one, so the image must be built with the prod origin.
+      NEXT_PUBLIC_BACKEND_URL: ${App__PublicBaseUrl}
+      NEXT_PUBLIC_NO_AUTH: "false"
+      BACKEND_ADMIN_TOKEN: ${BackendAuth__AdminToken}   # must equal backend BackendAuth__AdminToken
+      IDENTITY_SIGNING_KEY: ${Identity__SigningKey}     # must equal backend Identity__SigningKey
+      SESSION_SECRET: ${SESSION_SECRET}                 # signs the BFF session cookie
+      COOKIE_SECURE: "true"                             # panel is served over HTTPS by the shared Caddy
+    mem_limit: 320m
+    networks: [web]
+
+networks:
+  web:
+    external: true

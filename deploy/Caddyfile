@@ -1,0 +1,35 @@
+# ── Hookline site block for the SHARED Caddy (/opt/shared) ───────────────────
+# The deploy step copies this file to /opt/shared/sites/hookline.caddy and runs
+#   docker exec shared-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+# The shared global Caddyfile imports /etc/caddy/sites/*.caddy and supplies the
+# ACME account email ({ email {$CADDY_EMAIL} }).
+#
+# TLS: the bare public domain as the site address enables Caddy AUTOMATIC HTTPS
+# (ACME / Let's Encrypt). That is the TLS directive — Caddy provisions and renews
+# the certificate for danielhub.dev; no manual cert wiring is needed.
+#
+# Routing (arch guide §10/§11 — "critical, do not get this wrong"):
+#   /api/* is the Next.js BFF, NOT the backend. Only the paths external providers
+#   hit go backend-direct, plus the admin Hangfire dashboard:
+#     Slack events / interactivity / OAuth  -> /slack/*
+#     Google OAuth                          -> /google/*
+#     (future) LinkedIn OAuth               -> /linkedin/*
+#     Hangfire dashboard (admin-gated)      -> /hangfire
+#   Everything else (the app shell + the /api/* BFF) -> frontend.
+
+danielhub.dev {
+	encode zstd gzip
+
+	# Backend-direct: provider callbacks/webhooks + the admin Hangfire dashboard.
+	# /hangfire is gated by the backend's HangfireDashboardAuthorizationFilter (admin only);
+	# this route is what makes the dashboard reachable in prod (closes the deferred concern).
+	@backend path /slack/* /google/* /linkedin/* /hangfire /hangfire/*
+	handle @backend {
+		reverse_proxy hookline-backend-1:8080
+	}
+
+	# Everything else — the Next.js hub (shell + /api/* BFF, login/logout, admin proxy).
+	handle {
+		reverse_proxy hookline-frontend-1:3000
+	}
+}

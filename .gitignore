@@ -1,0 +1,24 @@
+# Design handoff bundle (reference only, not source)
+/design/
+
+# Dependencies / build artifacts
+**/node_modules/
+**/.next/
+**/out/
+**/build/
+*.tsbuildinfo
+
+# Env
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Local Claude settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+
+# Local prod-profile smoke harness (holds TEST secrets — never commit)
+deploy/local/

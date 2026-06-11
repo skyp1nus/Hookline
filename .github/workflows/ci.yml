@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, phase-0]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (build + arch/unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet restore Hookline.slnx
+      - run: dotnet build Hookline.slnx -c Release --no-restore
+      # The architecture tests run here — an illegal module reference fails this step
+      # (non-zero exit), which fails the job and blocks the merge.
+      - name: Test (gates the build on architecture violations)
+        run: dotnet test Hookline.slnx -c Release --no-build --verbosity normal
+
+  frontend:
+    name: Frontend (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+  # ════════════════════════════════════════════════════════════════════════════
+  #  DEPLOY GATE — image build/push + server deploy are DISABLED until you flip it.
+  #
+  #  >>> ONE-LINE FLIP: on the `docker` job below, change
+  #          if: false
+  #      to
+  #          if: github.ref == 'refs/heads/main'
+  #      That enables image build/push on main; the `deploy` job (needs: [docker])
+  #      then runs automatically on main too. Until you flip it, both are SKIPPED
+  #      and nothing is pushed or deployed — the backend/frontend jobs above still
+  #      run for real on every push/PR and gate correctness.
+  #
+  #  Before flipping, set repo secrets DEPLOY_HOST + DEPLOY_SSH_KEY, confirm GH_REPO,
+  #  and complete the go-live checklist in deploy/README.md.
+  # ════════════════════════════════════════════════════════════════════════════
+  docker:
+    name: Docker images (build + push to GHCR)
+    needs: [backend, frontend]
+    if: false   # ← DEPLOY GATE: flip to `github.ref == 'refs/heads/main'` to enable
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:latest
+            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          # NEXT_PUBLIC_BACKEND_URL is inlined into the client bundle at BUILD time
+          # (the "Connect Slack/Google" buttons navigate the browser to
+          # ${NEXT_PUBLIC_BACKEND_URL}/{provider}/.../oauth/start). It MUST be the public
+          # origin, baked here — a runtime env cannot override an inlined value.
+          build-args: |
+            NEXT_PUBLIC_BACKEND_URL=https://danielhub.dev
+          tags: |
+            ghcr.io/${{ github.repository }}/frontend:latest
+            ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+
+  deploy:
+    name: Deploy (scp compose + Caddy snippet, pull, up -d, reload Caddy)
+    needs: [docker]
+    # Inherits the gate: when `docker` is SKIPPED (if: false above), this is skipped too.
+    # Its own guard keeps deploy to main even after the docker gate is enabled.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy compose + Caddy site block to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "deploy/docker-compose.prod.yml,deploy/Caddyfile"
+          target: "/opt/hookline"
+          strip_components: 1
+      - name: Pull, restart, install + reload shared Caddy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/hookline
+            export IMAGE_TAG="${{ github.sha }}"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            # Publish this app's Caddy site block into the shared Caddy, then hot-reload.
+            install -D -m 644 Caddyfile /opt/shared/sites/hookline.caddy
+            docker exec shared-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+            docker image prune -f
