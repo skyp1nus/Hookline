@@ -154,7 +154,7 @@ public sealed class PollCommentsJob(
                     var notification = ToNotification(comment, title);
                     var threadTs = await ResolveThreadTsAsync(mappingId, comment, tsThisRun, ct);
 
-                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, ct);
+                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, ct);
 
                     if (result.Status == SlackPostStatus.Posted)
                     {

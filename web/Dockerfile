@@ -12,6 +12,9 @@ COPY . .
 # Client-visible backend origin for OAuth "Connect" redirects (inlined at build).
 ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
+# LOCAL DEV ONLY: fast-dev no-auth wall toggle, inlined into middleware at build.
+ARG NEXT_PUBLIC_NO_AUTH=false
+ENV NEXT_PUBLIC_NO_AUTH=$NEXT_PUBLIC_NO_AUTH
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 

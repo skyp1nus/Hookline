@@ -113,6 +113,27 @@ public sealed class GoogleConnections(ConnectionsDbContext db, IEventBus events)
         return account.Id;
     }
 
+    public async Task<bool> UpdateConsentAsync(
+        Guid accountId, string refreshToken, string scopes,
+        string? channelTitle = null, string? accountEmail = null, string? avatarUrl = null,
+        CancellationToken ct = default)
+    {
+        var account = await db.GoogleAccounts.FirstOrDefaultAsync(g => g.Id == accountId, ct);
+        if (account is null)
+        {
+            return false;
+        }
+
+        account.RefreshTokenEncrypted = refreshToken; // re-encrypted on write by the converter
+        account.Scopes = scopes;
+        if (channelTitle is not null) account.ChannelTitle = channelTitle;
+        if (accountEmail is not null) account.AccountEmail = accountEmail;
+        if (avatarUrl is not null) account.AvatarUrl = avatarUrl;
+        account.IsActive = true; // a fresh consent re-activates the record
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<bool> DeactivateAsync(Guid accountId, CancellationToken ct = default)
     {
         var account = await db.GoogleAccounts.FirstOrDefaultAsync(g => g.Id == accountId, ct);

@@ -62,10 +62,19 @@ public interface ISlackClient
 
     /// <summary>
     /// Posts a Block Kit comment notification to <paramref name="channelId"/>, optionally threaded
-    /// under <paramref name="threadTs"/>. The returned <see cref="SlackPostResult"/> distinguishes a
-    /// successful post (with its message ts) from a retryable failure and a permanently-gone channel.
+    /// under <paramref name="threadTs"/>. When <paramref name="mappingId"/> is supplied the card also
+    /// carries a "Reject on YouTube" button (its value routes the interactivity callback). The returned
+    /// <see cref="SlackPostResult"/> distinguishes a successful post (with its message ts) from a
+    /// retryable failure and a permanently-gone channel.
     /// </summary>
     Task<SlackPostResult> PostCommentAsync(
         string botToken, string channelId, CommentNotification comment,
-        string? threadTs = null, CancellationToken ct = default);
+        string? threadTs = null, Guid? mappingId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// POSTs a payload to a Slack <c>response_url</c> from an interaction (no bot token needed). Used to
+    /// update the card after a moderation action (<c>replace_original</c>) or to reply ephemerally with
+    /// an honest error. Best-effort: a non-success response is logged, not thrown.
+    /// </summary>
+    Task PostToResponseUrlAsync(string responseUrl, object payload, CancellationToken ct = default);
 }

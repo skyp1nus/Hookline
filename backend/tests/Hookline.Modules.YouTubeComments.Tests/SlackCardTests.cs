@@ -76,6 +76,42 @@ public class SlackCardTests
         Assert.Equal("https://www.youtube.com/watch?v=VID9&lc=P1.R1", url);
     }
 
+    [Fact]
+    public async Task Reject_button_added_with_confirm_when_mapping_id_supplied()
+    {
+        var h = new StubHandler();
+        var mappingId = Guid.NewGuid();
+
+        await Client(h).PostCommentAsync("xoxb-token", "C123", TopLevel(), mappingId: mappingId);
+
+        using var doc = JsonDocument.Parse(h.LastBody!);
+        var elements = doc.RootElement.GetProperty("blocks")[2].GetProperty("elements");
+        Assert.Equal(2, elements.GetArrayLength());
+        Assert.Equal("open_comment", elements[0].GetProperty("action_id").GetString());
+
+        var reject = elements[1];
+        Assert.Equal("reject_comment", reject.GetProperty("action_id").GetString());
+        Assert.Equal("danger", reject.GetProperty("style").GetString());
+        Assert.Equal($"{mappingId}:CMT1", reject.GetProperty("value").GetString());
+        // Irreversible-from-Slack ⇒ a native confirm dialog is attached, and the label is honest ("Reject").
+        Assert.True(reject.TryGetProperty("confirm", out var confirm));
+        Assert.Contains("Reject", reject.GetProperty("text").GetProperty("text").GetString());
+        Assert.Contains("hides", confirm.GetProperty("text").GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task No_reject_button_without_mapping_id()
+    {
+        var h = new StubHandler();
+
+        await Client(h).PostCommentAsync("xoxb-token", "C123", TopLevel());
+
+        using var doc = JsonDocument.Parse(h.LastBody!);
+        var elements = doc.RootElement.GetProperty("blocks")[2].GetProperty("elements");
+        Assert.Equal(1, elements.GetArrayLength());
+        Assert.Equal("open_comment", elements[0].GetProperty("action_id").GetString());
+    }
+
     [Theory]
     [InlineData("is_archived", SlackPostStatus.ChannelGone)]
     [InlineData("channel_not_found", SlackPostStatus.ChannelGone)]

@@ -1,5 +1,7 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 using Hookline.Modules.YouTubeComments.Infrastructure;
 
@@ -25,6 +27,110 @@ public static class YouTubeCommentsProviderEndpoints
     {
         app.MapGet("/slack/youtube-comments/oauth/start", StartSlackOAuth);
         app.MapGet("/slack/youtube-comments/oauth/callback", HandleSlackCallbackAsync);
+        app.MapPost("/slack/youtube-comments/interactivity", HandleInteractivityAsync);
+    }
+
+    /// <summary>
+    /// Slack interactivity callback — handles the "Reject on YouTube" button. Signature-verified over
+    /// the raw body (replay-guarded), then the <c>block_actions</c> payload is routed to the moderation
+    /// service. The card is updated in place on success (response_url, replace_original) or an honest
+    /// ephemeral error is returned. ACKs 200 within Slack's window.
+    /// </summary>
+    private static async Task<IResult> HandleInteractivityAsync(
+        HttpRequest req, SlackSignatureVerifier verifier, IOptions<YouTubeCommentsOptions> opt,
+        CommentModerationService moderation, ISlackClient slack, CancellationToken ct)
+    {
+        var rawBody = await ReadRawBodyAsync(req);
+        if (!VerifySignature(req, verifier, opt.Value.Slack.SigningSecret, rawBody))
+            return Results.Unauthorized();
+
+        var payloadJson = ExtractFormField(rawBody, "payload");
+        if (string.IsNullOrEmpty(payloadJson))
+            return Results.Ok();
+
+        using var doc = JsonDocument.Parse(payloadJson);
+        var p = doc.RootElement;
+
+        if (!p.TryGetProperty("type", out var pt) || pt.GetString() != "block_actions")
+            return Results.Ok();
+        if (!p.TryGetProperty("actions", out var actions) || actions.GetArrayLength() == 0)
+            return Results.Ok();
+
+        var action = actions[0];
+        var actionId = action.TryGetProperty("action_id", out var aid) ? aid.GetString() : null;
+        if (actionId != SlackActions.RejectComment)
+            return Results.Ok(); // the open_comment link button needs no server action
+
+        var value = action.TryGetProperty("value", out var v) ? v.GetString() : null;
+        var responseUrl = p.TryGetProperty("response_url", out var ru) ? ru.GetString() : null;
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(responseUrl))
+            return Results.Ok();
+
+        // value = "{mappingId}:{commentId}". Split on the FIRST colon — a comment id may contain none,
+        // but it never contains a colon, and a Guid never does.
+        var sep = value.IndexOf(':');
+        if (sep <= 0 || !Guid.TryParse(value[..sep], out var mappingId))
+            return Results.Ok();
+        var commentId = value[(sep + 1)..];
+
+        var actor = ExtractActor(p);
+        var result = await moderation.RejectAsync(mappingId, commentId, actor, ct);
+
+        if (result.CardShouldShowRejected)
+        {
+            JsonElement? blocks = p.TryGetProperty("message", out var msg)
+                && msg.TryGetProperty("blocks", out var b) ? b : null;
+            var statusLine = $"🚫 Removed on YouTube · by {actor.Display}";
+            var updated = CommentCardUpdater.MarkActioned(blocks, statusLine);
+            await slack.PostToResponseUrlAsync(
+                responseUrl, new { replace_original = true, text = "Comment removed on YouTube", blocks = updated }, ct);
+        }
+        else
+        {
+            // Honest error (no scope / not owner / quota / failure) — ephemeral, card left intact to retry.
+            await slack.PostToResponseUrlAsync(
+                responseUrl, new { response_type = "ephemeral", replace_original = false, text = result.Message }, ct);
+        }
+
+        return Results.Ok();
+    }
+
+    private static SlackActor ExtractActor(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("user", out var u))
+            return new SlackActor(null, null);
+
+        var id = u.TryGetProperty("id", out var uid) ? uid.GetString() : null;
+        var name = u.TryGetProperty("username", out var un) ? un.GetString()
+            : u.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+        return new SlackActor(id, name);
+    }
+
+    private static bool VerifySignature(HttpRequest req, SlackSignatureVerifier verifier, string? secret, string rawBody)
+        => verifier.Verify(
+            secret,
+            req.Headers["X-Slack-Request-Timestamp"].ToString(),
+            rawBody,
+            req.Headers["X-Slack-Signature"].ToString());
+
+    private static async Task<string> ReadRawBodyAsync(HttpRequest req)
+    {
+        req.EnableBuffering();
+        using var reader = new StreamReader(req.Body, Encoding.UTF8, leaveOpen: true);
+        var body = await reader.ReadToEndAsync();
+        req.Body.Position = 0;
+        return body;
+    }
+
+    private static string? ExtractFormField(string body, string name)
+    {
+        foreach (var pair in body.Split('&'))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq < 0) continue;
+            if (pair[..eq] == name) return WebUtility.UrlDecode(pair[(eq + 1)..]);
+        }
+        return null;
     }
 
     private static IResult StartSlackOAuth(HttpContext http, IOptions<YouTubeCommentsOptions> opt)

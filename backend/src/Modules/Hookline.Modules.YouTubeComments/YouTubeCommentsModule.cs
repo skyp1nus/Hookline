@@ -32,6 +32,7 @@ public sealed class YouTubeCommentsModule : IModule
     [
         new(ConnectionType.Slack, Required: true, Note: "Workspace bot token for the mapped channels."),
         new(ConnectionType.YouTubeApiKey, Required: true, Note: "Quota-rotated keys for comment polling."),
+        new(ConnectionType.Google, Required: false, Note: "Optional: a force-ssl account enables 'Reject on YouTube' from Slack."),
     ];
 
     public void RegisterServices(IServiceCollection services, IConfiguration config)
@@ -56,6 +57,13 @@ public sealed class YouTubeCommentsModule : IModule
 
         // Stateless YouTube client (builds a YouTubeService per call from the leased API key).
         services.AddSingleton<IYouTubeClient, YouTubeClient>();
+
+        // Slack interactivity (the "Reject on YouTube" button): signature verifier + the OAuth-authorized
+        // moderation write client. IGoogleChannelCredentials (the access-token provider) is implemented by
+        // the Uploads module; CommentModerationService consumes it optionally and degrades honestly if absent.
+        services.AddSingleton<SlackSignatureVerifier>();
+        services.AddSingleton<IYouTubeModerationClient, YouTubeModerationClient>();
+        services.AddScoped<CommentModerationService>();
 
         // Scoped services (touch the DbContext / shared accessors).
         services.AddScoped<ICommentsAudit, CommentsAudit>();

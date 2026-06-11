@@ -107,7 +107,7 @@ public sealed class SlackClient(
     /// <inheritdoc />
     public async Task<SlackPostResult> PostCommentAsync(
         string botToken, string channelId, CommentNotification comment,
-        string? threadTs = null, CancellationToken ct = default)
+        string? threadTs = null, Guid? mappingId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(botToken))
             return new SlackPostResult(SlackPostStatus.RetryableFailure);
@@ -120,7 +120,7 @@ public sealed class SlackClient(
             // beneath the comment card (the links live inside the blocks + the button).
             ["unfurl_links"] = false,
             ["unfurl_media"] = false,
-            ["blocks"] = BuildBlocks(comment),
+            ["blocks"] = BuildBlocks(comment, mappingId),
         };
         if (threadTs is not null) payload["thread_ts"] = threadTs;
 
@@ -176,7 +176,7 @@ public sealed class SlackClient(
     /// Builds the Block Kit comment card: a header context (avatar + linked author and video), the
     /// quoted comment, and a primary button that deep links straight to the comment under the video.
     /// </summary>
-    private static object[] BuildBlocks(CommentNotification c)
+    private static object[] BuildBlocks(CommentNotification c, Guid? mappingId = null)
     {
         // Canonical www host (matches YouTube's own canonical link) so the comment deep link resolves
         // in one hop. The lc (linked comment) param is YouTube's official comment permalink: on desktop
@@ -198,19 +198,60 @@ public sealed class SlackClient(
 
         var buttonText = c.IsReply ? "▶ Go to reply" : "▶ Go to comment";
 
+        var actionElements = new List<object>
+        {
+            new { type = "button", text = new { type = "plain_text", text = buttonText, emoji = true }, url = commentUrl, action_id = SlackActions.OpenComment, style = "primary" },
+        };
+
+        // The "Reject on YouTube" button is only added when a mapping id is supplied (so the callback can
+        // route to the comment + owning channel). It carries an inline confirm dialog — this is an
+        // irreversible-via-Slack moderation action. The label says "Reject/Hide", NOT "Delete": it sets
+        // moderationStatus=rejected (hides the comment), which is reversible in YouTube Studio. The value
+        // is "{mappingId}:{commentId}" — the raw comment id (the API target), not the lc deep-link form.
+        if (mappingId is { } id)
+        {
+            actionElements.Add(new
+            {
+                type = "button",
+                text = new { type = "plain_text", text = "🚫 Reject on YouTube", emoji = true },
+                action_id = SlackActions.RejectComment,
+                value = $"{id}:{c.CommentId}",
+                style = "danger",
+                confirm = new
+                {
+                    title = new { type = "plain_text", text = "Reject this comment?" },
+                    text = new { type = "mrkdwn", text = "This *hides* the comment on YouTube (moderation status → rejected). It can be restored in YouTube Studio, but not from here." },
+                    confirm = new { type = "plain_text", text = "Reject" },
+                    deny = new { type = "plain_text", text = "Cancel" },
+                    style = "danger",
+                },
+            });
+        }
+
         return
         [
             new { type = "context", elements = headerElements.ToArray() },
             new { type = "section", text = new { type = "mrkdwn", text = BlockQuote(c.CommentText) } },
-            new
-            {
-                type = "actions",
-                elements = new object[]
-                {
-                    new { type = "button", text = new { type = "plain_text", text = buttonText, emoji = true }, url = commentUrl, action_id = "open_comment", style = "primary" },
-                },
-            },
+            new { type = "actions", elements = actionElements.ToArray() },
         ];
+    }
+
+    /// <inheritdoc />
+    public async Task PostToResponseUrlAsync(string responseUrl, object payload, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(responseUrl))
+            return;
+
+        try
+        {
+            using var res = await http.PostAsync(responseUrl, JsonContent.Create(payload, options: JsonOpts), ct);
+            if (!res.IsSuccessStatusCode)
+                logger.LogWarning("Slack response_url POST returned {Status}", (int)res.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Slack response_url POST threw");
+        }
     }
 
     /// <summary>Escapes the three characters Slack mrkdwn treats specially (&amp;, &lt;, &gt;).</summary>

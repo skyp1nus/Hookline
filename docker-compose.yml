@@ -66,6 +66,15 @@ services:
       YouTubeUploads__PublicBaseUrl: ${TUNNEL_URL:-http://localhost:8080}
       YouTubeUploads__AdminPanelUrl: http://localhost:3000
       YouTubeUploads__TempDownloadDir: /tmp/ytu
+      # ── YouTube Comments module. Its own Slack app (monitoring + the "Reject on YouTube"
+      #    interactivity button). SigningSecret verifies the interactivity callback; the force-ssl
+      #    Google account is the SHARED one connected via the Uploads Google OAuth (no separate client).
+      YouTubeComments__Slack__SigningSecret: ${SLACK_COMMENTS_SIGNING_SECRET:-}
+      YouTubeComments__Slack__ClientId: ${SLACK_COMMENTS_CLIENT_ID:-}
+      YouTubeComments__Slack__ClientSecret: ${SLACK_COMMENTS_CLIENT_SECRET:-}
+      YouTubeComments__Slack__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/slack/youtube-comments/oauth/callback
+      YouTubeComments__PublicBaseUrl: ${TUNNEL_URL:-http://localhost:8080}
+      YouTubeComments__AdminPanelUrl: http://localhost:3000
     ports:
       - "8080:8080"
     depends_on:
@@ -79,6 +88,7 @@ services:
       context: ./web
       args:
         NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
+        NEXT_PUBLIC_NO_AUTH: ${NEXT_PUBLIC_NO_AUTH:-false}
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8080

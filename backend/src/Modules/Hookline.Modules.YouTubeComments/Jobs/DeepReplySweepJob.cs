@@ -158,7 +158,7 @@ public sealed class DeepReplySweepJob(
                     var notification = PollCommentsJob.ToNotification(reply, title);
                     string? threadTs = reply.ParentCommentId is { } pid && tsMap.TryGetValue(pid, out var ts) ? ts : null;
 
-                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, ct);
+                    var result = await slack.PostCommentAsync(botToken, slackChannel.SlackChannelId, notification, threadTs, mappingId, ct);
 
                     if (result.Status == SlackPostStatus.Posted)
                     {

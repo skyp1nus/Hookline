@@ -21,6 +21,7 @@ public sealed class GoogleCredentialFactory
     {
         YouTubeService.Scope.YoutubeUpload,          // youtube.upload  — videos.insert
         YouTubeService.Scope.YoutubeReadonly,        // youtube.readonly — channels.list (resolve channel id/title)
+        YouTubeService.Scope.YoutubeForceSsl,        // youtube.force-ssl — comment moderation (YouTube Comments consumer)
         DriveService.ScopeConstants.DriveReadonly,   // drive.readonly
     };
 

@@ -43,6 +43,10 @@ public sealed class YouTubeCommentsOptions
 
         /// <summary>Must match an app-configured redirect URL exactly.</summary>
         public string RedirectUri { get; set; } = "";
+
+        /// <summary>Slack app signing secret — verifies the X-Slack-Signature on the interactivity
+        /// callback (the "Reject on YouTube" button). Empty in monitoring-only deployments.</summary>
+        public string SigningSecret { get; set; } = "";
     }
 
     /// <summary>Controls the recurring delivery-retry job that drains <c>pending_deliveries</c>.</summary>

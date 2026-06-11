@@ -82,7 +82,7 @@ public sealed class DeliveryRetryJob(
             }
 
             var threadTs = await ResolveThreadTsAsync(row.MappingId, notification, ct);
-            var result = await slack.PostCommentAsync(target.BotToken, target.ChannelId, notification, threadTs, ct);
+            var result = await slack.PostCommentAsync(target.BotToken, target.ChannelId, notification, threadTs, row.MappingId, ct);
 
             if (result.Status == SlackPostStatus.Posted)
             {

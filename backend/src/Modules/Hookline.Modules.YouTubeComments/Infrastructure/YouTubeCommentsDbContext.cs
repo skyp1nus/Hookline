@@ -25,6 +25,7 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
     public DbSet<ProcessedComment> ProcessedComments => Set<ProcessedComment>();
     public DbSet<PendingDelivery> PendingDeliveries => Set<PendingDelivery>();
     public DbSet<QuotaUsage> QuotaUsages => Set<QuotaUsage>();
+    public DbSet<CommentModeration> CommentModerations => Set<CommentModeration>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -95,6 +96,22 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
         var qu = b.Entity<QuotaUsage>();
         qu.ToTable("quota_usage"); // singular — matches the legacy schema; do NOT pluralize.
         qu.HasKey(x => new { x.ApiKeyId, x.UsageDate });
+
+        var mod = b.Entity<CommentModeration>();
+        mod.ToTable("comment_moderations");
+        mod.HasKey(x => x.Id);
+        mod.Property(x => x.CommentId).IsRequired().HasMaxLength(100);
+        mod.Property(x => x.Action).IsRequired().HasMaxLength(20);
+        mod.Property(x => x.Status).IsRequired().HasMaxLength(20);
+        mod.Property(x => x.SlackUserId).HasMaxLength(40);
+        mod.Property(x => x.SlackUserName).HasMaxLength(120);
+        // Idempotency guard: one moderation row per (mapping, comment). A racing double-click hits this
+        // unique index on insert (caught + treated as already-done).
+        mod.HasIndex(x => new { x.MappingId, x.CommentId }).IsUnique();
+        mod.HasOne<ChannelMapping>()
+            .WithMany()
+            .HasForeignKey(x => x.MappingId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

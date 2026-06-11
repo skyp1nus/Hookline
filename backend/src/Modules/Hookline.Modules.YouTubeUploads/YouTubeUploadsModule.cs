@@ -65,6 +65,11 @@ public sealed class YouTubeUploadsModule : IModule
         services.AddScoped<ChannelMappingService>();
         services.AddScoped<GoogleProjectsService>();
         services.AddScoped<GoogleAccountsService>();
+
+        // Implements the shared IGoogleChannelCredentials contract — hands the YouTube Comments module a
+        // moderation-capable (force-ssl) access token for a channel's owning account, without exposing
+        // client secrets or coupling Comments to this module. (Owner of OAuth clients = owner of this impl.)
+        services.AddScoped<IGoogleChannelCredentials, GoogleChannelCredentials>();
         services.AddScoped<SlackChannelService>();
         services.AddScoped<UploadsReadService>();
         services.AddScoped<SlackIngestService>();

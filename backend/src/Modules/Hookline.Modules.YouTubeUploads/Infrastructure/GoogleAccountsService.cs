@@ -75,23 +75,52 @@ public sealed class GoogleAccountsService(
         }
         catch { /* channel lookup is best-effort; the account still works for upload */ }
 
+        var scopes = string.Join(' ', GoogleCredentialFactory.Scopes);
+        var label = channelTitle ?? "YouTube account";
+        var now = DateTimeOffset.UtcNow;
+
+        // Re-consent dedup keyed on (channel, project): re-consenting the SAME channel through the SAME
+        // project (e.g. to widen scope to youtube.force-ssl) reuses the existing account + binding in
+        // place — no duplicate. A NEW project for the same channel still inserts, preserving the
+        // multi-project rotation pool (N projects ⇒ N independent daily quotas). channelId == null
+        // (best-effort lookup failed) always inserts.
+        GoogleAccountBinding? existing = null;
+        if (channelId is not null)
+        {
+            existing = await db.GoogleAccountBindings
+                .FirstOrDefaultAsync(b => b.ProjectId == projectId && b.YouTubeChannelId == channelId, ct);
+        }
+
+        Guid accountId;
+        if (existing is not null)
+        {
+            // Update the SAME shared account record (token + scope snapshot) — reuse, don't duplicate.
+            accountId = existing.AccountId;
+            await googleAccounts.UpdateConsentAsync(accountId, token.RefreshToken, scopes, label, null, avatarUrl, ct);
+            existing.Label = label;
+            existing.Status = "Active";
+            existing.IsActive = true;
+            existing.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            return accountId;
+        }
+
         // 1) Account record → shared connections store (refresh token encrypted on write by the converter).
-        var accountId = await googleAccounts.CreateAccountAsync(new GoogleAccountWrite(
+        accountId = await googleAccounts.CreateAccountAsync(new GoogleAccountWrite(
             ChannelId: channelId,
-            ChannelTitle: channelTitle ?? "YouTube account",
+            ChannelTitle: label,
             RefreshToken: token.RefreshToken,
-            Scopes: string.Join(' ', GoogleCredentialFactory.Scopes),
+            Scopes: scopes,
             AccountEmail: null,
             AvatarUrl: avatarUrl), ct);
 
         // 2) Module-local binding → ties the shared account to its issuing project + snapshots the pool key.
-        var now = DateTimeOffset.UtcNow;
         db.GoogleAccountBindings.Add(new GoogleAccountBinding
         {
             AccountId = accountId,
             ProjectId = projectId,
             YouTubeChannelId = channelId,
-            Label = channelTitle ?? "YouTube account",
+            Label = label,
             Status = "Active",
             IsActive = true,
             CreatedAt = now,

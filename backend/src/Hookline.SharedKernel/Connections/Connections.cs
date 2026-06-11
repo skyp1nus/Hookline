@@ -90,6 +90,22 @@ public interface IGoogleConnections
     /// <summary>Insert a new connected account (encrypts the refresh token at rest). Returns the account id.</summary>
     Task<Guid> CreateAccountAsync(GoogleAccountWrite write, CancellationToken ct = default);
 
+    /// <summary>
+    /// Update an EXISTING account's refresh token + granted scopes in place. Used on a re-consent that
+    /// widens scope (e.g. adding <c>youtube.force-ssl</c> for comment moderation) so the SAME account
+    /// record is reused — no duplicate row — and its scope snapshot reflects the new grant. The owning
+    /// module decides WHICH account to update (by its channel↔account binding); this is just the write.
+    /// Returns false when the account is missing.
+    /// </summary>
+    Task<bool> UpdateConsentAsync(
+        Guid accountId,
+        string refreshToken,
+        string scopes,
+        string? channelTitle = null,
+        string? accountEmail = null,
+        string? avatarUrl = null,
+        CancellationToken ct = default);
+
     /// <summary>Deactivate an account and publish <see cref="GoogleAccountDisconnected"/>.</summary>
     Task<bool> DeactivateAsync(Guid accountId, CancellationToken ct = default);
 }
