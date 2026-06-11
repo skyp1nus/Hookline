@@ -45,7 +45,9 @@ public sealed class YouTubeCommentsOptions
         public string RedirectUri { get; set; } = "";
 
         /// <summary>Slack app signing secret — verifies the X-Slack-Signature on the interactivity
-        /// callback (the "Reject on YouTube" button). Empty in monitoring-only deployments.</summary>
+        /// callback (the "Reject on YouTube" button). REQUIRED in Production: GuardSecurityConfig refuses
+        /// to boot if it is empty or a placeholder, because the verifier is fail-closed and an empty
+        /// secret would 401 every button press invisibly. Defaults to empty only for Development/tests.</summary>
         public string SigningSecret { get; set; } = "";
     }
 

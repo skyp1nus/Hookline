@@ -59,7 +59,9 @@ services:
 
       # ── YouTube Comments module ─────────────────────────────────────────────
       # Comments uses Slack OAuth + YouTube Data API KEYS (no Google OAuth). The API
-      # keys are entered in-app (Connections), not via env.
+      # keys are entered in-app (Connections), not via env. SigningSecret is REQUIRED in
+      # Production (GuardSecurityConfig) — it verifies the "Reject on YouTube" callback.
+      YouTubeComments__Slack__SigningSecret: ${YouTubeComments__Slack__SigningSecret}
       YouTubeComments__Slack__ClientId: ${YouTubeComments__Slack__ClientId}
       YouTubeComments__Slack__ClientSecret: ${YouTubeComments__Slack__ClientSecret}
       YouTubeComments__Slack__RedirectUri: ${App__PublicBaseUrl}/slack/youtube-comments/oauth/callback

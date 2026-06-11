@@ -119,10 +119,16 @@ public static class DependencyInjection
 
     /// <summary>
     /// Fails the boot in any non-Development environment if auth is weakened: DevNoAuth must
-    /// be off, and the security secrets must not be empty or a known dev placeholder. This is
+    /// be off, and the required secrets must not be empty or a known dev placeholder. This is
     /// the loud backstop behind the silent DevNoAuth gating in <see cref="AddHooklineInfrastructure"/>.
+    /// <para>The required set is the three core auth primitives PLUS each module's Slack signing secret:
+    /// both modules always map their <c>/slack/.../interactivity</c> callback, and the verifier is
+    /// fail-closed, so an empty/placeholder signing secret would make every "Reject on YouTube" button
+    /// press 401 INVISIBLY in prod (boot stays clean, cards keep posting). Guarding it turns that silent
+    /// misconfig into a fast, loud boot failure.</para>
+    /// <para><c>internal</c> (not private) so it can be unit-tested directly without standing up the DB.</para>
     /// </summary>
-    private static void GuardSecurityConfig(IConfiguration config, IHostEnvironment env)
+    internal static void GuardSecurityConfig(IConfiguration config, IHostEnvironment env)
     {
         if (env.IsDevelopment())
         {
@@ -140,6 +146,9 @@ public static class DependencyInjection
             ("TokenEncryption:Key", config["TokenEncryption:Key"]),
             ("Identity:SigningKey", config["Identity:SigningKey"]),
             ("BackendAuth:AdminToken", config["BackendAuth:AdminToken"]),
+            // Slack signing secrets — verify the interactivity callbacks (always mapped, fail-closed).
+            ("YouTubeUploads:Slack:SigningSecret", config["YouTubeUploads:Slack:SigningSecret"]),
+            ("YouTubeComments:Slack:SigningSecret", config["YouTubeComments:Slack:SigningSecret"]),
         ];
 
         foreach (var (key, value) in secrets)
@@ -150,7 +159,8 @@ public static class DependencyInjection
             {
                 throw new InvalidOperationException(
                     $"{key} is missing or a known dev placeholder — refusing to start outside Development. " +
-                    "Generate a strong value, e.g. `openssl rand -base64 36`.");
+                    "Set a real value (auth primitives: `openssl rand -base64 36`; Slack signing secrets " +
+                    "come from the Slack app's Basic Information page).");
             }
         }
     }
