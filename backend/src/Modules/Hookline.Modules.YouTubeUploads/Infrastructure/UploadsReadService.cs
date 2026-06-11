@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Hookline.Modules.YouTubeUploads.Domain;
+using Hookline.SharedKernel.Common;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
@@ -112,6 +113,31 @@ public sealed class UploadsReadService(
                 j.YouTubeUrl,
                 j.ErrorMessage);
         }).ToList();
+    }
+
+    /// <summary>
+    /// The history rows serialized to CSV, with the same account / status / title-search filters the
+    /// History page applies, over a wider window (up to 5000 finished jobs). Used by the Export button.
+    /// </summary>
+    public async Task<string> GetHistoryCsvAsync(string? account, string? status, string? search, CancellationToken ct = default)
+    {
+        var items = await GetHistoryAsync(5000, ct);
+        var q = search?.Trim().ToLowerInvariant();
+
+        var filtered = items.Where(h =>
+            (account is null or "all" || h.Account == account)
+            && (status is null or "all" || h.Status == status)
+            && (string.IsNullOrEmpty(q) || h.Title.ToLowerInvariant().Contains(q)));
+
+        return Csv.Document(
+            ["title", "account", "slack", "sizeMB", "durationSec", "privacy", "status", "finished", "by", "videoUrl", "error"],
+            filtered.Select(h => new string?[]
+            {
+                h.Title, h.Account, h.Slack,
+                h.SizeMB.ToString(CultureInfo.InvariantCulture),
+                h.Duration?.ToString(CultureInfo.InvariantCulture),
+                h.Privacy, h.Status, h.Finished, h.By, h.VideoUrl, h.Error,
+            }));
     }
 
     /// <summary>Channel→account mappings, mapped to the mapping-row shape (active toggle + 24h count).</summary>

@@ -55,6 +55,13 @@ public static class YouTubeUploadsApiEndpoints
 
         g.MapGet("/upload-mappings", async (UploadsReadService reads, CancellationToken ct) =>
             Results.Ok(await reads.GetMappingsAsync(ct)));
+
+        // Real filtered CSV export of the history page (server applies the same account/status/search
+        // filters). Returned as text/csv; the web client turns the body into a named file download (the BFF
+        // proxy forwards content-type but not content-disposition, so the filename is set client-side).
+        g.MapGet("/upload-history/export.csv", async (
+            UploadsReadService reads, string? account, string? status, string? q, CancellationToken ct) =>
+            Results.Text(await reads.GetHistoryCsvAsync(account, status, q, ct), "text/csv"));
     }
 
     private static void MapJobActions(RouteGroupBuilder g)

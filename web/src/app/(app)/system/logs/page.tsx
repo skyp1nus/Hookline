@@ -12,12 +12,14 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { type ComponentType, useState } from "react";
+import { toast } from "sonner";
 
-import { NotYet } from "@/components/not-yet";
 import { StatusDot } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { apiErrorMessage } from "@/lib/api/client";
+import { csvFilename, downloadCsv } from "@/lib/download";
 import {
   Select,
   SelectContent,
@@ -79,11 +81,29 @@ export default function LogsPage() {
   const [query, setQuery] = useState("");
   const [tool, setTool] = useState<ToolFilter>("all");
   const [level, setLevel] = useState<LevelFilter>("all");
+  const [exporting, setExporting] = useState(false);
 
   // Tool filters server-side (per-module); level + search stay client-side over the returned page.
   const { data } = useLogs(MODULE_BY_TOOL[tool]);
   const logs = data ?? [];
   const q = query.trim().toLowerCase();
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const qs = new URLSearchParams();
+      const mod = MODULE_BY_TOOL[tool];
+      if (mod) qs.set("module", mod);
+      if (level !== "all") qs.set("level", level);
+      if (q) qs.set("q", q);
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      await downloadCsv(`/system/logs/export.csv${suffix}`, csvFilename("logs"));
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setExporting(false);
+    }
+  }
   const shown = logs.filter((l) => {
     if (level !== "all" && l.level !== level) return false;
     if (
@@ -106,12 +126,10 @@ export default function LogsPage() {
               <StatusDot tone="ok" pulse />
               Live · refreshes every 10s
             </div>
-            <NotYet reason="CSV export isn't wired yet — backend pending.">
-              <Button variant="outline" size="sm" className="pointer-events-none" disabled>
-                <Download className="size-3.5" />
-                Export
-              </Button>
-            </NotYet>
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
+              <Download className="size-3.5" />
+              Export
+            </Button>
           </>
         }
       />

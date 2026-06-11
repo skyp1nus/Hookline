@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
-import { NotYet } from "@/components/not-yet";
 import { JOB_STATUS, StatusBadge } from "@/components/status";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { apiErrorMessage } from "@/lib/api/client";
+import { csvFilename, downloadCsv } from "@/lib/download";
 import { formatDuration, formatMB } from "@/lib/format";
 import { type Privacy, type UploadHistoryItem } from "@/lib/mock-data";
 import { useUploadHistory } from "@/features/uploads/hooks";
@@ -59,6 +61,23 @@ export default function HistoryPage() {
   const [query, setQuery] = useState("");
   const [acct, setAcct] = useState("all");
   const [status, setStatus] = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const qs = new URLSearchParams();
+      if (acct !== "all") qs.set("account", acct);
+      if (status !== "all") qs.set("status", status);
+      if (query.trim()) qs.set("q", query.trim());
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      await downloadCsv(`/youtube-uploads/upload-history/export.csv${suffix}`, csvFilename("uploads-history"));
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const accounts = useMemo(
     () => [...new Set(history.map((h) => h.account))],
@@ -78,12 +97,10 @@ export default function HistoryPage() {
         title="History"
         description="Past uploads to YouTube, newest first."
         actions={
-          <NotYet reason="CSV export isn't wired yet — backend pending.">
-            <Button variant="outline" size="sm" className="pointer-events-none" disabled>
-              <Download className="size-3.5" />
-              Export CSV
-            </Button>
-          </NotYet>
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={exporting}>
+            <Download className="size-3.5" />
+            Export CSV
+          </Button>
         }
       />
 
