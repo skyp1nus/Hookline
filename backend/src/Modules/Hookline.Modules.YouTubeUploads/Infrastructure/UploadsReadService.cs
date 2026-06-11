@@ -136,7 +136,7 @@ public sealed class UploadsReadService(
             m.GoogleAccountChannelId ?? "—",
             privacy,
             "—",
-            true,
+            m.IsActive,
             up24.GetValueOrDefault(m.SlackChannelId))).ToList();
     }
 

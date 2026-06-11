@@ -46,6 +46,15 @@ public sealed class SlackIngestService(
         var mapping = await mappings.GetByChannelAsync(msg.ChannelId, ct);
         if (mapping is null) return;
 
+        // Paused route (P0 pause toggle): skip silently — enqueue nothing. This IS the scheduler reaction
+        // for the event-driven uploads pipeline; read fresh per message, so it is restart-safe with no
+        // reconcile and resumes the moment the route is re-activated.
+        if (!mapping.IsActive)
+        {
+            logger.LogInformation("Skipping ingest for paused route {MappingId} (channel {ChannelId})", mapping.Id, msg.ChannelId);
+            return;
+        }
+
         var parsed = parser.Parse(msg.Text);
         if (!parsed.IsUploadTemplate) return; // not an UPLOAD command — ignore silently
 

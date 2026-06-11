@@ -2,11 +2,12 @@
 
 import { ChevronRight, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { NotYet } from "@/components/not-yet";
 import { PageHeading } from "@/components/page-heading";
+import { apiErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -26,13 +27,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { type UploadMapping } from "@/lib/mock-data";
-import { useDeleteUploadMapping, useUploadMappings } from "@/features/uploads/hooks";
+import {
+  useDeleteUploadMapping,
+  useUpdateUploadMapping,
+  useUploadMappings,
+} from "@/features/uploads/hooks";
 
 import { AddRouteDialog } from "../_components/add-route-dialog";
 
 export default function UploadMappingsPage() {
   const { data } = useUploadMappings();
   const deleteMapping = useDeleteUploadMapping();
+  const updateMapping = useUpdateUploadMapping();
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
 
@@ -110,7 +116,12 @@ export default function UploadMappingsPage() {
               </TableRow>
             ) : (
               shown.map((m) => (
-                <MappingRow key={m.id} mapping={m} onDelete={() => deleteMapping.mutateAsync(m.id)} />
+                <MappingRow
+                  key={m.id}
+                  mapping={m}
+                  onDelete={() => deleteMapping.mutateAsync(m.id)}
+                  onToggle={(active) => updateMapping.mutateAsync({ id: m.id, active })}
+                />
               ))
             )}
           </TableBody>
@@ -129,8 +140,29 @@ export default function UploadMappingsPage() {
   );
 }
 
-function MappingRow({ mapping, onDelete }: { mapping: UploadMapping; onDelete: () => Promise<unknown> }) {
+function MappingRow({
+  mapping,
+  onDelete,
+  onToggle,
+}: {
+  mapping: UploadMapping;
+  onDelete: () => Promise<unknown>;
+  onToggle: (active: boolean) => Promise<unknown>;
+}) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  async function handleToggle(next: boolean) {
+    setToggling(true);
+    try {
+      await onToggle(next);
+      toast.success(next ? "Route resumed." : "Route paused.");
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <TableRow>
@@ -158,13 +190,14 @@ function MappingRow({ mapping, onDelete }: { mapping: UploadMapping; onDelete: (
         </div>
       </TableCell>
       <TableCell className="px-4 py-[13px] align-middle">
-        {/* Privacy is the GLOBAL default visibility for every route; there is no per-route privacy column
-            or mutation, so it is read-only here (not a fake editable control). */}
-        <NotYet reason="Per-route privacy isn't editable yet — this is the global default.">
-          <span className="inline-flex items-center text-[12.5px] text-muted-foreground">
-            {mapping.privacy === "—" ? "—" : mapping.privacy}
-          </span>
-        </NotYet>
+        {/* Privacy is the GLOBAL default visibility for every route (set in Settings); there is no
+            per-route override, so this is an honest read-only label, not a disabled control. */}
+        <span
+          title="Global default — change it in Settings"
+          className="inline-flex items-center text-[12.5px] text-muted-foreground"
+        >
+          {mapping.privacy === "—" ? "—" : mapping.privacy}
+        </span>
       </TableCell>
       <TableCell className="px-4 py-[13px] align-middle">
         {mapping.playlist === "—" ? (
@@ -183,15 +216,13 @@ function MappingRow({ mapping, onDelete }: { mapping: UploadMapping; onDelete: (
         </span>
       </TableCell>
       <TableCell className="px-4 py-[13px] text-center align-middle">
-        {/* Pausing a route is a wanted feature but has no backend toggle yet — disabled, never faked. */}
-        <NotYet reason="Pausing a route isn't wired yet — backend pending.">
-          <div className="inline-flex items-center gap-[9px]">
-            <Switch checked={mapping.active} disabled className="pointer-events-none" />
-            <span className="w-12 text-left text-[12.5px] text-muted-foreground">
-              {mapping.active ? "Active" : "Paused"}
-            </span>
-          </div>
-        </NotYet>
+        {/* Real pause/resume: a paused route is skipped at ingest, so its pipeline stops triggering. */}
+        <div className="inline-flex items-center gap-[9px]">
+          <Switch checked={mapping.active} disabled={toggling} onCheckedChange={handleToggle} />
+          <span className="w-12 text-left text-[12.5px] text-muted-foreground">
+            {mapping.active ? "Active" : "Paused"}
+          </span>
+        </div>
       </TableCell>
       <TableCell className="px-4 py-[13px] text-right align-middle">
         <DropdownMenu>

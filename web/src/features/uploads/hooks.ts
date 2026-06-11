@@ -41,8 +41,7 @@ export function useCancelJob() {
   });
 }
 
-// ── upload mappings: create / delete (the only write paths the backend exposes — there is no PATCH, so
-//    the per-row Privacy/Active toggles stay honestly disabled) ──
+// ── upload mappings: create / update (active toggle) / delete ──
 
 /** A Slack channel pickable for a new upload route. Carries both ids the create endpoint needs. */
 export interface UploadSlackChannelOption {
@@ -112,6 +111,16 @@ export function useCreateUploadMapping() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateUploadMappingInput) => api.post("/youtube-uploads/mappings", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads", "mappings"] }),
+  });
+}
+
+/** Toggle a route active/paused (P0). Paused routes are skipped at ingest — the pipeline stops triggering. */
+export function useUpdateUploadMapping() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      api.patch(`/youtube-uploads/mappings/${id}`, { active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads", "mappings"] }),
   });
 }

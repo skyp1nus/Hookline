@@ -18,5 +18,13 @@ public class ChannelMapping
     /// <summary>Shared Connections Google account id (plain value, no FK).</summary>
     public Guid GoogleAccountId { get; set; }
 
+    /// <summary>
+    /// Active (true) or paused (false). Uploads are event-driven, so a paused route is skipped at ingest
+    /// (<c>SlackIngestService</c> enqueues nothing for its Slack messages) rather than tearing down a
+    /// recurring job — there is none. The flag is read fresh on every message, so pausing reacts
+    /// immediately and survives a restart with no reconcile step.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; }
 }

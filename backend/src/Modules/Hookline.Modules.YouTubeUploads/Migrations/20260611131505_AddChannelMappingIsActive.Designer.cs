@@ -3,6 +3,7 @@ using System;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hookline.Modules.YouTubeUploads.Migrations
 {
     [DbContext(typeof(YouTubeUploadsDbContext))]
-    partial class YouTubeUploadsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611131505_AddChannelMappingIsActive")]
+    partial class AddChannelMappingIsActive
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

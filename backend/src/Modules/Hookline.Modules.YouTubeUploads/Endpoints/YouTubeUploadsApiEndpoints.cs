@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 namespace Hookline.Modules.YouTubeUploads.Endpoints;
 
 public sealed record CreateMappingDto(Guid SlackWorkspaceId, string SlackChannelId, Guid GoogleAccountId);
+public sealed record UpdateMappingDto(bool? Active);
 public sealed record UpdateSettingsDto(string? DefaultVisibility, int? TransferChunkSizeMb, bool? MadeForKids, bool? ContainsSyntheticMedia);
 public sealed record CreateGoogleProjectDto(string Label, string ClientId, string ClientSecret);
 public sealed record UpdateGoogleProjectDto(string? Label, string? Status);
@@ -220,6 +221,16 @@ public static class YouTubeUploadsApiEndpoints
                 if (ts is not null) await slack.PinMessageAsync(botToken, dto.SlackChannelId, ts, ct);
             }
             return Results.Ok(new { created = true });
+        });
+
+        // Toggle a route active/paused (P0). Event-driven, so this only flips the flag the ingest path
+        // reads — no scheduler call. Re-render the per-channel Slack status so a paused route drops out.
+        g.MapPatch("/mappings/{id:guid}", async (
+            Guid id, UpdateMappingDto dto, ChannelMappingService mappings, ISlackStatusService status, CancellationToken ct) =>
+        {
+            if (!await mappings.UpdateAsync(id, dto.Active, ct)) return Results.NotFound();
+            await status.RefreshQueueAsync(ct);
+            return Results.Ok(new { id, active = dto.Active });
         });
 
         g.MapDelete("/mappings/{id:guid}", async (Guid id, ChannelMappingService mappings, CancellationToken ct) =>

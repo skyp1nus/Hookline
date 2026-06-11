@@ -90,6 +90,9 @@ public sealed class YouTubeUploadsDbContext(
         cm.ToTable("channel_mappings");
         cm.HasKey(x => x.Id);
         cm.HasIndex(x => x.SlackChannelId).IsUnique();
+        // Default true so a new route is active, and so the add-column migration backfills EXISTING routes
+        // to active (they were running before the toggle existed) instead of silently pausing them.
+        cm.Property(x => x.IsActive).HasDefaultValue(true);
         // SlackWorkspaceId + GoogleAccountId reference the shared connections schema — plain values.
     }
 }
