@@ -7,7 +7,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSlackWorkspaces } from "@/features/connections/hooks";
+import { useDisconnectWorkspace, useSlackWorkspaces } from "@/features/connections/hooks";
 
 import {
   ConnectCard,
@@ -15,10 +15,14 @@ import {
   ConnectionGrid,
 } from "../_components/connection-card";
 
-const SLACK_OAUTH_START = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/slack/oauth/start`;
+// Backend-direct OAuth (bypasses the BFF). The install client is env-configured, so this href works as-is
+// once Slack credentials are set. The token store is shared across modules — connecting here makes the
+// workspace available to both YouTube Uploads and YouTube Comments.
+const SLACK_OAUTH_START = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/slack/youtube-uploads/oauth/start`;
 
 export default function SlackConnectionsPage() {
   const { data, isLoading } = useSlackWorkspaces();
+  const disconnect = useDisconnectWorkspace();
   const workspaces = data ?? [];
 
   return (
@@ -59,6 +63,9 @@ export default function SlackConnectionsPage() {
                 connection={ws}
                 icon={SlackIcon}
                 iconClassName="text-[#4A154B] dark:text-[#E01E5A]"
+                onDisconnect={(id) => disconnect.mutateAsync(id)}
+                disconnectTitle="Disconnect workspace?"
+                disconnectDescription={`Disconnect ${ws.name}? Mappings that post here will stop until you reconnect.`}
               />
             ))}
             <ConnectCard

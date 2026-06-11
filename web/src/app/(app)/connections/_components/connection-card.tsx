@@ -1,8 +1,10 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, useState } from "react";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { NotYet } from "@/components/not-yet";
 import { StatusBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +21,8 @@ export interface Connection {
   handle: string;
   /** A short status line, e.g. "5 channels mapped · OAuth valid". */
   meta: ReactNode;
+  /** Whether the connection is live; drives the badge. Defaults to connected. */
+  active?: boolean;
 }
 
 /** A connected account card: brand-tinted icon tile, name, handle, meta, actions. */
@@ -27,15 +31,21 @@ export function ConnectionCard({
   icon: Icon,
   iconClassName,
   onDisconnect,
-  onManage,
+  disconnectTitle = "Disconnect?",
+  disconnectDescription,
 }: {
   connection: Connection;
   icon: GlyphIcon;
   /** Brand tint for the icon tile, e.g. "text-[#4A154B]" for Slack. */
   iconClassName?: string;
-  onDisconnect?: () => void;
-  onManage?: () => void;
+  /** Real disconnect mutation; runs inside a confirm dialog. Omit to honest-disable the button. */
+  onDisconnect?: (id: string) => Promise<unknown>;
+  disconnectTitle?: string;
+  disconnectDescription?: string;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const connected = connection.active !== false;
+
   return (
     <Card className="p-0">
       <div className="flex flex-col p-[18px]">
@@ -48,8 +58,8 @@ export function ConnectionCard({
           >
             <Icon className="size-5" />
           </div>
-          <StatusBadge tone="ok" dot>
-            Connected
+          <StatusBadge tone={connected ? "ok" : "warn"} dot>
+            {connected ? "Connected" : "Inactive"}
           </StatusBadge>
         </div>
         <div className="mt-3.5">
@@ -58,19 +68,44 @@ export function ConnectionCard({
         </div>
         <div className="mt-2.5 text-[12.5px] text-muted-foreground">{connection.meta}</div>
         <div className="mt-4 flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1" onClick={onManage}>
-            Manage
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={onDisconnect}
-          >
-            Disconnect
-          </Button>
+          {/* Manage has no backend endpoint yet — honest-disabled rather than inert. */}
+          <NotYet className="flex-1" reason="Manage isn't wired yet — backend pending.">
+            <Button variant="outline" size="sm" className="pointer-events-none w-full" disabled>
+              Manage
+            </Button>
+          </NotYet>
+          {onDisconnect ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setConfirmOpen(true)}
+            >
+              Disconnect
+            </Button>
+          ) : (
+            <NotYet reason="Disconnect isn't wired yet — backend pending.">
+              <Button variant="ghost" size="sm" className="pointer-events-none text-muted-foreground" disabled>
+                Disconnect
+              </Button>
+            </NotYet>
+          )}
         </div>
       </div>
+
+      {onDisconnect ? (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={disconnectTitle}
+          description={
+            disconnectDescription ?? `Disconnect ${connection.name}? You can reconnect via OAuth later.`
+          }
+          confirmLabel="Disconnect"
+          successMessage={`Disconnected ${connection.name}.`}
+          onConfirm={() => onDisconnect(connection.id)}
+        />
+      ) : null}
     </Card>
   );
 }

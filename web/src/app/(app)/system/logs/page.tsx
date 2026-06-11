@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { type ComponentType, useState } from "react";
 
+import { NotYet } from "@/components/not-yet";
 import { StatusDot } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,10 +28,18 @@ import {
 import { PageHeading } from "@/components/page-heading";
 import { type LogEntry, type LogLevel } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { useLogs } from "@/features/system/hooks";
+import { type LogModule, useLogs } from "@/features/system/hooks";
 
 type LevelFilter = LogLevel | "all";
-type ToolFilter = LogEntry["tool"] | "all";
+type ToolFilter = "all" | "comments" | "uploads";
+
+// The shared audit trail only tags rows with the two backend modules; map the tool filter to the module
+// the endpoint understands ("all" → no filter).
+const MODULE_BY_TOOL: Record<ToolFilter, LogModule | undefined> = {
+  all: undefined,
+  comments: "youtube-comments",
+  uploads: "youtube-uploads",
+};
 
 const LEVEL_META: Record<
   LogLevel,
@@ -56,8 +65,6 @@ const TOOL_OPTIONS: { value: ToolFilter; label: string }[] = [
   { value: "all", label: "All tools" },
   { value: "comments", label: "YouTube Comments" },
   { value: "uploads", label: "YouTube Uploads" },
-  { value: "connections", label: "Connections" },
-  { value: "system", label: "System" },
 ];
 
 const LEVEL_OPTIONS: { value: LevelFilter; label: string }[] = [
@@ -69,15 +76,15 @@ const LEVEL_OPTIONS: { value: LevelFilter; label: string }[] = [
 ];
 
 export default function LogsPage() {
-  const { data } = useLogs();
   const [query, setQuery] = useState("");
   const [tool, setTool] = useState<ToolFilter>("all");
   const [level, setLevel] = useState<LevelFilter>("all");
 
+  // Tool filters server-side (per-module); level + search stay client-side over the returned page.
+  const { data } = useLogs(MODULE_BY_TOOL[tool]);
   const logs = data ?? [];
   const q = query.trim().toLowerCase();
   const shown = logs.filter((l) => {
-    if (tool !== "all" && l.tool !== tool) return false;
     if (level !== "all" && l.level !== level) return false;
     if (
       q &&
@@ -97,12 +104,14 @@ export default function LogsPage() {
           <>
             <div className="mr-1 flex items-center gap-[7px] text-[12.5px] text-muted-foreground">
               <StatusDot tone="ok" pulse />
-              Streaming
+              Live · refreshes every 10s
             </div>
-            <Button variant="outline" size="sm">
-              <Download className="size-3.5" />
-              Export
-            </Button>
+            <NotYet reason="CSV export isn't wired yet — backend pending.">
+              <Button variant="outline" size="sm" className="pointer-events-none" disabled>
+                <Download className="size-3.5" />
+                Export
+              </Button>
+            </NotYet>
           </>
         }
       />

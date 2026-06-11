@@ -1,15 +1,21 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { mockFetch } from "@/lib/mock-fetch";
+import { api } from "@/lib/api/client";
 
-/** A connected Slack workspace — shaped for the connection card. */
+// Connected Slack workspaces + Google accounts live in the shared `connections` store. There is no
+// tool-agnostic /api/connections/* endpoint — the YouTube Uploads module exposes the canonical list +
+// disconnect routes (the Slack token store is shared across modules, so this list is authoritative). We
+// map the richer backend DTOs down to the {id,name,handle,meta} shape the connection card renders.
+
+/** A connected Slack workspace, shaped for the connection card. */
 export interface SlackWorkspace {
   id: string;
   name: string;
   handle: string;
   meta: string;
+  active: boolean;
 }
 
 /** A connected Google account authorized to upload to YouTube. */
@@ -18,58 +24,102 @@ export interface GoogleAccount {
   name: string;
   handle: string;
   meta: string;
+  active: boolean;
 }
 
-/** Slack-specific detail beyond DATA.health (which only knows the 2/2 count). */
-const SLACK_WORKSPACES: SlackWorkspace[] = [
-  {
-    id: "ws-daniels-team",
-    name: "Daniel's Team",
-    handle: "daniels-team.slack.com",
-    meta: "5 channels mapped · OAuth valid",
-  },
-  {
-    id: "ws-side-project",
-    name: "Side Project Co.",
-    handle: "sideproject.slack.com",
-    meta: "2 channels mapped · OAuth valid",
-  },
-];
+/** A Google Cloud OAuth project (client id/secret). Connecting an account requires one. */
+export interface GoogleProject {
+  id: string;
+  label: string;
+  status: string;
+}
 
-/** Google accounts authorized to upload to YouTube — richer than DATA.ytChannels. */
-const GOOGLE_ACCOUNTS: GoogleAccount[] = [
-  {
-    id: "acct-daniels-channel",
-    name: "Daniel's Channel",
-    handle: "daniel@hookline.io",
-    meta: "2 keys · scope: youtube.upload",
-  },
-  {
-    id: "acct-tutorials",
-    name: "Tutorials by Daniel",
-    handle: "tutorials@hookline.io",
-    meta: "1 key · scope: youtube.upload",
-  },
-  {
-    id: "acct-side-project",
-    name: "Side Project Co.",
-    handle: "team@sideproject.co",
-    meta: "1 key · scope: youtube.upload",
-  },
-];
+// Raw backend DTOs (camelCase per System.Text.Json web defaults).
+interface SlackWorkspaceDto {
+  id: string;
+  slackTeamId: string;
+  teamName: string;
+  isActive: boolean;
+  channelCount: number;
+}
+interface GoogleAccountDto {
+  id: string;
+  label: string;
+  youTubeChannelTitle: string | null;
+  accountEmail: string | null;
+  status: string;
+  projectLabel: string | null;
+}
+interface GoogleProjectDto {
+  id: string;
+  label: string;
+  status: string;
+}
 
 export function useSlackWorkspaces() {
   return useQuery({
     queryKey: ["connections", "slack"],
-    // Phase 1: queryFn = () => api.get<SlackWorkspace[]>("/connections/slack")
-    queryFn: () => mockFetch<SlackWorkspace[]>(SLACK_WORKSPACES),
+    queryFn: async () => {
+      const list = await api.get<SlackWorkspaceDto[]>("/youtube-uploads/slack/workspaces");
+      return list.map(
+        (w): SlackWorkspace => ({
+          id: w.id,
+          name: w.teamName,
+          handle: w.slackTeamId,
+          meta: `${w.channelCount} ${w.channelCount === 1 ? "channel" : "channels"} cached${
+            w.isActive ? "" : " · inactive"
+          }`,
+          active: w.isActive,
+        }),
+      );
+    },
   });
 }
 
 export function useGoogleAccounts() {
   return useQuery({
     queryKey: ["connections", "google"],
-    // Phase 1: queryFn = () => api.get<GoogleAccount[]>("/connections/google")
-    queryFn: () => mockFetch<GoogleAccount[]>(GOOGLE_ACCOUNTS),
+    queryFn: async () => {
+      const list = await api.get<GoogleAccountDto[]>("/youtube-uploads/google/accounts");
+      return list.map(
+        (a): GoogleAccount => ({
+          id: a.id,
+          name: a.youTubeChannelTitle ?? a.label,
+          handle: a.accountEmail ?? a.label,
+          meta: `${a.projectLabel ? `${a.projectLabel} · ` : ""}scope youtube.upload`,
+          // Listed accounts are authorized; the store only keeps connected accounts.
+          active: true,
+        }),
+      );
+    },
+  });
+}
+
+/** Google Cloud projects. A Google account can only be connected once at least one project exists. */
+export function useGoogleProjects() {
+  return useQuery({
+    queryKey: ["connections", "google-projects"],
+    queryFn: async () => {
+      const list = await api.get<GoogleProjectDto[]>("/youtube-uploads/google/projects");
+      return list.map((p): GoogleProject => ({ id: p.id, label: p.label, status: p.status }));
+    },
+  });
+}
+
+/** Disconnect a Slack workspace (DELETE on the shared store; cascades the module channel cache). */
+export function useDisconnectWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/youtube-uploads/slack/workspaces/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connections", "slack"] }),
+  });
+}
+
+/** Disconnect a Google account. Backend returns 409 `account_mapped` if a mapping still uses it. */
+export function useDisconnectAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/youtube-uploads/google/accounts/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connections", "google"] }),
   });
 }
