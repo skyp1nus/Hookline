@@ -83,6 +83,41 @@ public class CommentModerationTests
         Assert.Equal("Comment", entry.EntityType);
         Assert.Equal("CMT1", entry.EntityId);
         Assert.Contains("U123", entry.Details);
+        // The moderating Slack user is stamped as the explicit audit ACTOR (id + handle), not "anonymous".
+        Assert.Equal("@ada (slack:U123)", entry.Actor);
+    }
+
+    [Fact]
+    public async Task Reject_stamps_the_slack_user_as_actor_through_the_shared_audit_log()
+    {
+        // Drive the REAL CommentsAudit facade (not the recording fake) into a recording shared log, so the
+        // assertion proves the Slack user reaches the shared audit ACTOR field end-to-end — the D6(b) fix.
+        // Before the fix this column was "anonymous" (the /slack callback bypasses identity).
+        var db = TestDb.Create();
+        var yt = new YouTubeChannel { YouTubeChannelId = Channel, Title = "Chan" };
+        var sc = new SlackChannel { WorkspaceId = Guid.NewGuid(), SlackChannelId = "C1", Name = "general" };
+        var mapping = new ChannelMapping
+        {
+            YouTubeChannelId = yt.Id, SlackChannelId = sc.Id, YouTubeChannel = yt, SlackChannel = sc,
+        };
+        db.YouTubeChannels.Add(yt);
+        db.SlackChannels.Add(sc);
+        db.ChannelMappings.Add(mapping);
+        await db.SaveChangesAsync();
+
+        var creds = new FakeGoogleChannelCredentials();
+        creds.Seed(Channel);
+        var sharedLog = new RecordingAuditLog();
+        var service = new CommentModerationService(
+            db, new IGoogleChannelCredentials[] { creds }, new FakeGoogleConnections(),
+            new FakeYouTubeModerationClient(), new CommentsAudit(sharedLog), NullLogger<CommentModerationService>.Instance);
+
+        var result = await service.RejectAsync(mapping.Id, "CMT1", new SlackActor("U123", "ada"));
+
+        Assert.Equal(ModerationOutcome.Rejected, result.Outcome);
+        var row = Assert.Single(sharedLog.Rows, r => r.Action == "Moderation");
+        Assert.Equal("@ada (slack:U123)", row.Actor); // the real Slack user, NOT "anonymous"
+        Assert.Equal("youtube-comments", row.Module);
     }
 
     [Fact]

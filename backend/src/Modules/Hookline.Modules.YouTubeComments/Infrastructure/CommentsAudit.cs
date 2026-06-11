@@ -19,9 +19,11 @@ public static class AuditLevel
 /// <summary>
 /// Module-local audit facade that maps the legacy level/category/message shape onto the shared
 /// <see cref="IAuditLog"/>. The shared log stamps the actor from <c>ICurrentUser</c> automatically
-/// (the admin email for an API request, <c>system</c> inside a background job), so the legacy
-/// <paramref name="actor"/> argument is accepted for call-site compatibility but ignored. The
-/// category becomes the audit <c>Action</c> and the level is folded into the detail; every row is
+/// (the admin email for an API request, <c>system</c> inside a background job); when a caller supplies an
+/// explicit <paramref name="actor"/> it is FORWARDED to the shared log and wins over the request
+/// principal — this is how the moderating Slack user is recorded on the identity-bypassed <c>/slack</c>
+/// interactivity callback (where the current user is anonymous) instead of being lost to "anonymous".
+/// The category becomes the audit <c>Action</c> and the level is folded into the detail; every row is
 /// tagged <c>module = "youtube-comments"</c> so the shared System→Logs page can filter to it.
 /// </summary>
 /// <remarks>
@@ -76,6 +78,7 @@ public sealed class CommentsAudit(IAuditLog audit) : ICommentsAudit
             entityType: entityType,
             entityId: entityId,
             detail: detail,
+            actor: actor,
             ct: ct);
     }
 }

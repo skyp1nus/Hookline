@@ -36,7 +36,7 @@ internal sealed class RecordingAuditLog : IAuditLog
     public List<Row> Rows { get; } = new();
 
     public Task WriteAsync(string action, string? module = null, string? entityType = null,
-        string? entityId = null, string? detail = null, CancellationToken ct = default)
+        string? entityId = null, string? detail = null, string? actor = null, CancellationToken ct = default)
     {
         Rows.Add(new Row(action, module, entityType, entityId, detail));
         return Task.CompletedTask;

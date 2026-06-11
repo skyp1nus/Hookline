@@ -23,7 +23,7 @@ public sealed class JobAuditTests
         public List<AuditEntry> Entries { get; } = [];
 
         public Task WriteAsync(string action, string? module = null, string? entityType = null,
-            string? entityId = null, string? detail = null, CancellationToken ct = default)
+            string? entityId = null, string? detail = null, string? actor = null, CancellationToken ct = default)
         {
             Entries.Add(new AuditEntry(action, module, entityType, entityId, detail));
             return Task.CompletedTask;

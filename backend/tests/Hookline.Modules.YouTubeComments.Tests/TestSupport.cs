@@ -122,7 +122,7 @@ internal sealed class FakeSlackConnections : ISlackConnections
 internal sealed class RecordingCommentsAudit : ICommentsAudit
 {
     public readonly record struct Entry(
-        string Level, string Category, string Message, string? EntityType, string? EntityId, string? Details);
+        string Level, string Category, string Message, string? EntityType, string? EntityId, string? Actor, string? Details);
 
     public List<Entry> Entries { get; } = new();
 
@@ -131,7 +131,7 @@ internal sealed class RecordingCommentsAudit : ICommentsAudit
         string? entityType = null, string? entityId = null, string? actor = null, string? details = null,
         CancellationToken ct = default)
     {
-        Entries.Add(new Entry(level, category, message, entityType, entityId, details));
+        Entries.Add(new Entry(level, category, message, entityType, entityId, actor, details));
         return Task.CompletedTask;
     }
 }
@@ -139,15 +139,15 @@ internal sealed class RecordingCommentsAudit : ICommentsAudit
 /// <summary>Records what the shared <see cref="IAuditLog"/> would persist (so the folded-level prefix is visible).</summary>
 internal sealed class RecordingAuditLog : IAuditLog
 {
-    public readonly record struct Row(string Action, string? Module, string? EntityType, string? EntityId, string? Detail);
+    public readonly record struct Row(string Action, string? Module, string? EntityType, string? EntityId, string? Detail, string? Actor);
 
     public List<Row> Rows { get; } = new();
 
     public Task WriteAsync(
         string action, string? module = null, string? entityType = null, string? entityId = null,
-        string? detail = null, CancellationToken ct = default)
+        string? detail = null, string? actor = null, CancellationToken ct = default)
     {
-        Rows.Add(new Row(action, module, entityType, entityId, detail));
+        Rows.Add(new Row(action, module, entityType, entityId, detail, actor));
         return Task.CompletedTask;
     }
 }

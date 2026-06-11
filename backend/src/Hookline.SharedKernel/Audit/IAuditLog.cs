@@ -4,7 +4,11 @@ namespace Hookline.SharedKernel.Audit;
 
 /// <summary>
 /// Shared audit trail. Modules write entries through it; the "Logs" page reads
-/// them with a per-module filter. The actor is taken from the current user.
+/// them with a per-module filter. The actor defaults to the current user, but a caller may stamp an
+/// EXPLICIT <paramref name="actor"/> for actions whose real actor is not the request principal — e.g. a
+/// provider callback (a Slack interactivity button) runs on the identity-bypassed <c>/slack</c> path
+/// where the current user is anonymous, so the moderating Slack user is passed through here instead of
+/// being lost to "anonymous".
 /// </summary>
 public interface IAuditLog
 {
@@ -14,6 +18,7 @@ public interface IAuditLog
         string? entityType = null,
         string? entityId = null,
         string? detail = null,
+        string? actor = null,
         CancellationToken ct = default);
 }
 

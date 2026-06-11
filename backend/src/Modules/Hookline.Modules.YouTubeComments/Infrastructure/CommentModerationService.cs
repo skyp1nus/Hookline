@@ -14,9 +14,27 @@ namespace Hookline.Modules.YouTubeComments.Infrastructure;
 /// is "system" on a provider callback, so this is recorded explicitly).</summary>
 public readonly record struct SlackActor(string? UserId, string? UserName)
 {
+    /// <summary>Human label for the Slack card status line ("removed by …").</summary>
     public string Display => string.IsNullOrEmpty(UserName)
         ? (string.IsNullOrEmpty(UserId) ? "a Slack user" : $"<@{UserId}>")
         : $"@{UserName}";
+
+    /// <summary>The value stamped into the shared audit <c>Actor</c> column. Carries BOTH the Slack
+    /// handle and the immutable user id for non-repudiation, so System→Logs shows who moderated a
+    /// comment instead of "anonymous" (the /slack callback bypasses identity, so the request principal
+    /// is anonymous and cannot be the audit actor).</summary>
+    public string AuditActor
+    {
+        get
+        {
+            var hasId = !string.IsNullOrEmpty(UserId);
+            var hasName = !string.IsNullOrEmpty(UserName);
+            if (hasId && hasName) return $"@{UserName} (slack:{UserId})";
+            if (hasName) return $"@{UserName}";
+            if (hasId) return $"slack:{UserId}";
+            return "a Slack user";
+        }
+    }
 }
 
 /// <summary>The terminal outcome of a reject action, mapped by the endpoint to a Slack response.</summary>
@@ -194,6 +212,10 @@ public sealed class CommentModerationService(
 
     private Task LogAsync(string level, string commentId, string channelId, SlackActor actor, string message) =>
         audit.LogAsync(level, "Moderation", message, "Comment", commentId,
+            // Stamp the moderating Slack user as the explicit audit ACTOR (the /slack callback is
+            // identity-bypassed, so the request principal is anonymous). The id/name also stay in the
+            // detail JSON + the comment_moderations row for cross-referencing.
+            actor: actor.AuditActor,
             details: $"{{\"channel\":\"{channelId}\",\"slackUser\":\"{actor.UserId}\",\"slackUserName\":\"{actor.UserName}\"}}");
 
     private static string Actor(CommentModeration row) =>

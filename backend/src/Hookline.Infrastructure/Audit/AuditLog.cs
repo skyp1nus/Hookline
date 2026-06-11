@@ -8,7 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hookline.Infrastructure.Audit;
 
-/// <summary>Writes audit entries, stamping the actor from the current user.</summary>
+/// <summary>Writes audit entries, stamping the actor from the current user — unless the caller passes an
+/// explicit <c>actor</c> (e.g. the moderating Slack user on the identity-bypassed provider callback,
+/// where the current user is anonymous), which then takes precedence.</summary>
 public sealed class AuditLog(SharedDbContext db, ICurrentUser currentUser) : IAuditLog
 {
     public async Task WriteAsync(
@@ -17,12 +19,17 @@ public sealed class AuditLog(SharedDbContext db, ICurrentUser currentUser) : IAu
         string? entityType = null,
         string? entityId = null,
         string? detail = null,
+        string? actor = null,
         CancellationToken ct = default)
     {
         db.AuditLogs.Add(new AuditLogEntry
         {
             Timestamp = DateTimeOffset.UtcNow,
-            Actor = currentUser.Email ?? (currentUser.IsSystem ? "system" : "anonymous"),
+            // An explicit actor (a provider-callback actor like the Slack user) wins; otherwise fall back
+            // to the request principal (admin email / "system" for jobs / "anonymous").
+            Actor = !string.IsNullOrWhiteSpace(actor)
+                ? actor
+                : currentUser.Email ?? (currentUser.IsSystem ? "system" : "anonymous"),
             ActorId = currentUser.UserId,
             Role = currentUser.Role?.ToString(),
             Module = module,
