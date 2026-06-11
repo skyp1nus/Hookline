@@ -1,19 +1,11 @@
 "use client";
 
-import {
-  ChevronRight,
-  ExternalLink,
-  MoreHorizontal,
-  Pause,
-  Play,
-  Plus,
-  Search,
-  Settings,
-  Trash2,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronRight, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { NotYet } from "@/components/not-yet";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,17 +13,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -41,25 +25,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { type Privacy, type UploadMapping } from "@/lib/mock-data";
-import { useUploadMappings } from "@/features/uploads/hooks";
+import { type UploadMapping } from "@/lib/mock-data";
+import { useDeleteUploadMapping, useUploadMappings } from "@/features/uploads/hooks";
 
-const PRIVACY_OPTIONS: Privacy[] = ["Public", "Unlisted", "Private"];
+import { AddRouteDialog } from "../_components/add-route-dialog";
 
 export default function UploadMappingsPage() {
   const { data } = useUploadMappings();
-  const [rows, setRows] = useState<UploadMapping[]>([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const deleteMapping = useDeleteUploadMapping();
+  const [query, setQuery] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
-  // Seed local state from the hook; privacy/active toggles mutate this local copy.
-  useEffect(() => {
-    if (data) setRows(data.map((m) => ({ ...m })));
-  }, [data]);
-
-  const toggle = (id: string) =>
-    setRows((p) => p.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));
-  const setPrivacy = (id: string, privacy: Privacy) =>
-    setRows((p) => p.map((m) => (m.id === id ? { ...m, privacy } : m)));
+  const rows = useMemo(() => data ?? [], [data]);
+  const q = query.trim().toLowerCase();
+  const shown = rows.filter(
+    (m) =>
+      !q ||
+      m.slack.toLowerCase().includes(q) ||
+      m.workspace.toLowerCase().includes(q) ||
+      m.account.toLowerCase().includes(q) ||
+      m.key.toLowerCase().includes(q),
+  );
 
   return (
     <div className="flex flex-col gap-[22px]">
@@ -67,7 +53,7 @@ export default function UploadMappingsPage() {
         title="Mappings"
         description="Where uploads from each Slack channel land on YouTube."
         actions={
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="size-3.5" />
             Add route
           </Button>
@@ -79,18 +65,13 @@ export default function UploadMappingsPage() {
         <div className="flex flex-wrap items-center gap-2.5 border-b p-3">
           <div className="relative w-[260px] max-w-full">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-7 pl-9 text-[13px]" placeholder="Search routes…" />
+            <Input
+              className="h-7 pl-9 text-[13px]"
+              placeholder="Search routes…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger size="sm" className="text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         {/* table */}
@@ -118,53 +99,39 @@ export default function UploadMappingsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows
-              .filter((m) =>
-                statusFilter === "all"
-                  ? true
-                  : statusFilter === "active"
-                    ? m.active
-                    : !m.active,
-              )
-              .map((m) => (
-                <MappingRow
-                  key={m.id}
-                  mapping={m}
-                  onToggle={toggle}
-                  onPrivacyChange={setPrivacy}
-                />
-              ))}
+            {shown.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={8}
+                  className="px-4 py-11 text-center text-[13.5px] text-muted-foreground"
+                >
+                  {rows.length === 0 ? "No routes yet — add one to get started." : "No routes match your search."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              shown.map((m) => (
+                <MappingRow key={m.id} mapping={m} onDelete={() => deleteMapping.mutateAsync(m.id)} />
+              ))
+            )}
           </TableBody>
         </Table>
 
-        {/* pagination */}
+        {/* footer */}
         <div className="flex items-center justify-between border-t p-3">
           <span className="text-[12.5px] text-muted-foreground">
-            <span className="mono">{rows.length}</span> routes
+            <span className="mono">{shown.length}</span> routes
           </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>
-              Prev
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Next
-            </Button>
-          </div>
         </div>
       </Card>
+
+      <AddRouteDialog open={addOpen} onOpenChange={setAddOpen} />
     </div>
   );
 }
 
-function MappingRow({
-  mapping,
-  onToggle,
-  onPrivacyChange,
-}: {
-  mapping: UploadMapping;
-  onToggle: (id: string) => void;
-  onPrivacyChange: (id: string, privacy: Privacy) => void;
-}) {
+function MappingRow({ mapping, onDelete }: { mapping: UploadMapping; onDelete: () => Promise<unknown> }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   return (
     <TableRow>
       <TableCell className="px-4 py-[13px] align-middle">
@@ -191,21 +158,13 @@ function MappingRow({
         </div>
       </TableCell>
       <TableCell className="px-4 py-[13px] align-middle">
-        <Select
-          value={mapping.privacy === "—" ? undefined : mapping.privacy}
-          onValueChange={(v) => onPrivacyChange(mapping.id, v as Privacy)}
-        >
-          <SelectTrigger size="sm" className="w-full text-[12.5px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRIVACY_OPTIONS.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Privacy is the GLOBAL default visibility for every route; there is no per-route privacy column
+            or mutation, so it is read-only here (not a fake editable control). */}
+        <NotYet reason="Per-route privacy isn't editable yet — this is the global default.">
+          <span className="inline-flex items-center text-[12.5px] text-muted-foreground">
+            {mapping.privacy === "—" ? "—" : mapping.privacy}
+          </span>
+        </NotYet>
       </TableCell>
       <TableCell className="px-4 py-[13px] align-middle">
         {mapping.playlist === "—" ? (
@@ -224,12 +183,15 @@ function MappingRow({
         </span>
       </TableCell>
       <TableCell className="px-4 py-[13px] text-center align-middle">
-        <div className="inline-flex items-center gap-[9px]">
-          <Switch checked={mapping.active} onCheckedChange={() => onToggle(mapping.id)} />
-          <span className="w-12 text-left text-[12.5px] text-muted-foreground">
-            {mapping.active ? "Active" : "Paused"}
-          </span>
-        </div>
+        {/* Pausing a route is a wanted feature but has no backend toggle yet — disabled, never faked. */}
+        <NotYet reason="Pausing a route isn't wired yet — backend pending.">
+          <div className="inline-flex items-center gap-[9px]">
+            <Switch checked={mapping.active} disabled className="pointer-events-none" />
+            <span className="w-12 text-left text-[12.5px] text-muted-foreground">
+              {mapping.active ? "Active" : "Paused"}
+            </span>
+          </div>
+        </NotYet>
       </TableCell>
       <TableCell className="px-4 py-[13px] text-right align-middle">
         <DropdownMenu>
@@ -239,25 +201,22 @@ function MappingRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem>
-              <Settings className="size-4" />
-              Edit route
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onToggle(mapping.id)}>
-              {mapping.active ? <Pause className="size-4" /> : <Play className="size-4" />}
-              {mapping.active ? "Pause" : "Resume"}
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <ExternalLink className="size-4" />
-              Open Slack channel
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">
+            <DropdownMenuItem variant="destructive" onSelect={() => setConfirmOpen(true)}>
               <Trash2 className="size-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="Delete route?"
+          description={`Stop forwarding uploads from ${mapping.slack} to ${mapping.account}? This can't be undone.`}
+          confirmLabel="Delete"
+          successMessage="Route deleted."
+          onConfirm={onDelete}
+        />
       </TableCell>
     </TableRow>
   );

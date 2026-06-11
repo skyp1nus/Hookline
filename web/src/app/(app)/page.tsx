@@ -33,7 +33,7 @@ const ACTIVITY_ICON = { upload: CloudUpload, comment: MessageSquare, key: Key };
 
 export default function OverviewPage() {
   const router = useRouter();
-  const { data, isLoading } = useOverview();
+  const { data, isLoading, isFetching, refetch } = useOverview();
 
   const go = (id: RouteId | string) => router.push(ROUTE_PATH[id as RouteId] ?? "/");
   const attn = data?.needsAttention ?? [];
@@ -48,8 +48,8 @@ export default function OverviewPage() {
         description="What your automations are doing right now — and what needs a hand."
         actions={
           <>
-            <Button variant="outline" size="sm">
-              <RefreshCw className="size-3.5" />
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
               Refresh
             </Button>
             <Button size="sm" onClick={() => go("logs")}>

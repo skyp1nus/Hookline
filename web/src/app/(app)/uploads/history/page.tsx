@@ -8,16 +8,14 @@ import {
   Link2,
   Lock,
   MoreHorizontal,
-  RefreshCw,
-  ScrollText,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 
 import { SlackIcon, YoutubeIcon } from "@/components/brand-icons";
+import { NotYet } from "@/components/not-yet";
 import { JOB_STATUS, StatusBadge } from "@/components/status";
 import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
@@ -26,7 +24,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -81,10 +78,12 @@ export default function HistoryPage() {
         title="History"
         description="Past uploads to YouTube, newest first."
         actions={
-          <Button variant="outline" size="sm">
-            <Download className="size-3.5" />
-            Export CSV
-          </Button>
+          <NotYet reason="CSV export isn't wired yet — backend pending.">
+            <Button variant="outline" size="sm" className="pointer-events-none" disabled>
+              <Download className="size-3.5" />
+              Export CSV
+            </Button>
+          </NotYet>
         }
       />
 
@@ -162,20 +161,12 @@ export default function HistoryPage() {
           </TableBody>
         </Table>
 
-        {/* pagination */}
+        {/* footer */}
         {shown.length > 0 && (
           <div className="flex items-center justify-between border-t p-3">
             <span className="text-[12.5px] text-muted-foreground">
               <span className="mono">{shown.length}</span> uploads
             </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled>
-                Prev
-              </Button>
-              <Button variant="outline" size="sm" disabled>
-                Next
-              </Button>
-            </div>
           </div>
         )}
       </Card>
@@ -196,11 +187,12 @@ function HistoryRow({ item }: { item: UploadHistoryItem }) {
           </div>
           <div className="min-w-0">
             <div className="max-w-[260px] truncate font-[540]">{item.title}</div>
-            {item.status === "done" ? (
+            {item.status === "done" && item.videoUrl ? (
               <a
-                href="#"
-                className="mono text-[11.5px] text-primary no-underline"
-                onClick={(e) => e.preventDefault()}
+                href={item.videoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mono text-[11.5px] text-primary no-underline hover:underline"
               >
                 {item.videoUrl}
               </a>
@@ -253,36 +245,24 @@ function HistoryRow({ item }: { item: UploadHistoryItem }) {
         <span className="mono text-[12.5px]">{item.finished}</span>
       </TableCell>
       <TableCell className="px-4 py-[13px] text-right align-middle">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-[30px]">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {item.status === "done" && (
-              <DropdownMenuItem>
-                <ExternalLink className="size-4" />
-                Open on YouTube
+        {/* The only honest row action is opening the real video — no retry/remove/log endpoints exist. */}
+        {item.status === "done" && item.videoUrl ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-[30px]">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <a href={item.videoUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="size-4" />
+                  Open on YouTube
+                </a>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem>
-              <ScrollText className="size-4" />
-              View job log
-            </DropdownMenuItem>
-            {item.status === "failed" && (
-              <DropdownMenuItem>
-                <RefreshCw className="size-4" />
-                Retry upload
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">
-              <Trash2 className="size-4" />
-              Remove from history
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </TableCell>
     </TableRow>
   );
