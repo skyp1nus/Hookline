@@ -25,6 +25,7 @@ export type RouteId =
   | "ytu-queue"
   | "ytu-history"
   | "ytu-mappings"
+  | "ytu-settings"
   | "conn-slack"
   | "conn-google"
   | "conn-keys"
@@ -94,6 +95,7 @@ const uploadsTool: ToolDef = {
     { id: "ytu-queue", path: "/uploads/queue", label: () => "Queue", icon: () => CloudUpload, cmdIcon: () => CloudUpload, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Queue`, module: "youtube-uploads" },
     { id: "ytu-history", path: "/uploads/history", label: () => "History", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · History`, module: "youtube-uploads" },
     { id: "ytu-mappings", path: "/uploads/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Mappings`, module: "youtube-uploads" },
+    { id: "ytu-settings", path: "/uploads/settings", label: () => "Settings", icon: () => Settings, cmdIcon: () => Settings, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Settings`, module: "youtube-uploads" },
   ],
 };
 

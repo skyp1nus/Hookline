@@ -143,3 +143,39 @@ export function useDeleteUploadMapping() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads", "mappings"] }),
   });
 }
+
+// ── default video settings (studio metadata applied to every upload) ──
+
+export type UploadVisibility = "public" | "unlisted" | "private";
+
+/** Server shape of `/youtube-uploads/settings`. `transferChunkSizeMb` is a transfer knob, not a video setting. */
+export interface UploadSettings {
+  defaultVisibility: UploadVisibility;
+  transferChunkSizeMb: number;
+  madeForKids: boolean;
+  containsSyntheticMedia: boolean;
+}
+
+/** PATCH is partial — send only the video settings the Settings page surfaces. */
+export interface UpdateUploadSettingsInput {
+  defaultVisibility?: UploadVisibility;
+  madeForKids?: boolean;
+  containsSyntheticMedia?: boolean;
+}
+
+export function useUploadSettings() {
+  return useQuery({
+    queryKey: ["uploads", "settings"],
+    queryFn: () => api.get<UploadSettings>("/youtube-uploads/settings"),
+  });
+}
+
+/** Persist a partial change to the default video settings; the response is the full saved state. */
+export function useUpdateUploadSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateUploadSettingsInput) =>
+      api.patch<UploadSettings>("/youtube-uploads/settings", body),
+    onSuccess: (saved) => qc.setQueryData(["uploads", "settings"], saved),
+  });
+}

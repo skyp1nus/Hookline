@@ -55,24 +55,7 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
         int chunkSize,
         CancellationToken ct)
     {
-        var video = new Video
-        {
-            Snippet = new VideoSnippet
-            {
-                Title = NormalizeTitle(title),
-                Description = NormalizeDescription(description),
-                Tags = NormalizeTags(tags),
-                CategoryId = DefaultCategoryId,
-            },
-            Status = new VideoStatus
-            {
-                PrivacyStatus = NormalizeVisibility(visibility),
-                // YouTube COPPA self-declaration: false = "No, not made for kids". madeForKids is read-only.
-                SelfDeclaredMadeForKids = madeForKids,
-                // Altered/synthetic (AI) content disclosure: false = "No". Settable since the Oct-2024 API rev.
-                ContainsSyntheticMedia = containsSyntheticMedia,
-            },
-        };
+        var video = BuildVideo(title, description, tags, visibility, madeForKids, containsSyntheticMedia);
 
         var request = service.Videos.Insert(video, "snippet,status", videoStream, "video/*");
         request.NotifySubscribers = false;
@@ -103,6 +86,34 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
 
         return new YouTubeUploadResult(videoId, $"https://youtu.be/{videoId}");
     }
+
+    /// <summary>
+    /// Builds the <c>videos.insert</c> resource from the title/description/tags plus the three default
+    /// video settings (Settings page → <see cref="UploadSettingsService"/>). This is the single place the
+    /// persisted settings become a YouTube <see cref="Video"/>; kept separate from the network call so the
+    /// settings→resource mapping is unit-testable without hitting the API.
+    /// </summary>
+    internal static Video BuildVideo(
+        string title, string? description, IList<string> tags,
+        string visibility, bool madeForKids, bool containsSyntheticMedia) =>
+        new()
+        {
+            Snippet = new VideoSnippet
+            {
+                Title = NormalizeTitle(title),
+                Description = NormalizeDescription(description),
+                Tags = NormalizeTags(tags),
+                CategoryId = DefaultCategoryId,
+            },
+            Status = new VideoStatus
+            {
+                PrivacyStatus = NormalizeVisibility(visibility),
+                // YouTube COPPA self-declaration: false = "No, not made for kids". madeForKids is read-only.
+                SelfDeclaredMadeForKids = madeForKids,
+                // Altered/synthetic (AI) content disclosure: false = "No". Settable since the Oct-2024 API rev.
+                ContainsSyntheticMedia = containsSyntheticMedia,
+            },
+        };
 
     /// <summary>
     /// Sets a custom thumbnail on an existing video (<c>thumbnails.set</c>, ~50 units). Best-effort:
