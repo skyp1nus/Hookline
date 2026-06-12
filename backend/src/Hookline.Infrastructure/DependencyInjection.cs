@@ -141,6 +141,23 @@ public static class DependencyInjection
                 $"Auth:DevNoAuth=true is only allowed in Development (environment: {env.EnvironmentName}). Refusing to start.");
         }
 
+        // Slack Socket Mode is a DEV-ONLY inbound transport: its envelopes are pre-authenticated by the WSS
+        // handshake, with NO per-message signature check (unlike the canonical HTTP webhook). Like
+        // Auth:DevNoAuth it must never be enabled outside Development — refuse the boot if it is, per module.
+        string[] socketModeKeys =
+        [
+            "YouTubeUploads:Slack:SocketMode:Enabled",
+            "YouTubeComments:Slack:SocketMode:Enabled",
+        ];
+        foreach (var key in socketModeKeys)
+        {
+            if (config.GetValue<bool>(key))
+            {
+                throw new InvalidOperationException(
+                    $"{key}=true is only allowed in Development (environment: {env.EnvironmentName}). Refusing to start.");
+            }
+        }
+
         (string Key, string? Value)[] secrets =
         [
             ("TokenEncryption:Key", config["TokenEncryption:Key"]),

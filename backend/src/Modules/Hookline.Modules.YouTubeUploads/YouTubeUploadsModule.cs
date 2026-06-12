@@ -84,6 +84,12 @@ public sealed class YouTubeUploadsModule : IModule
 
         // Startup: seed env project + self-heal interrupted jobs (after migrations).
         services.AddHostedService<YouTubeUploadsStartupService>();
+
+        // DEV-ONLY inbound Slack transport (Socket Mode). No-op unless YouTubeUploads:Slack:SocketMode:Enabled
+        // is true; REFUSED at boot in Production by GuardSecurityConfig. The signature-verified HTTP webhook
+        // (/slack/youtube-uploads/events|interactivity) remains the canonical production path; this module-local
+        // service just lets a developer test inbound Slack without a public tunnel. No cross-module dispatcher.
+        services.AddHostedService<SlackSocketModeService>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

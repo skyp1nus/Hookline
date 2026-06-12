@@ -104,4 +104,58 @@ public class GuardSecurityConfigTests
 
         Assert.Contains("YouTubeUploads:Slack:SigningSecret", ex.Message);
     }
+
+    // ── dev-only Slack Socket Mode: must be OFF in Production (mirrors Auth:DevNoAuth) ──
+
+    [Fact]
+    public void Uploads_socket_mode_enabled_fails_fast_in_production()
+    {
+        var values = ValidSecrets();
+        values["YouTubeUploads:Slack:SocketMode:Enabled"] = "true";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DependencyInjection.GuardSecurityConfig(
+            Config(values), new FakeEnv(Environments.Production)));
+
+        Assert.Contains("YouTubeUploads:Slack:SocketMode:Enabled", ex.Message);
+    }
+
+    [Fact]
+    public void Comments_socket_mode_enabled_fails_fast_in_production()
+    {
+        var values = ValidSecrets();
+        values["YouTubeComments:Slack:SocketMode:Enabled"] = "true";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DependencyInjection.GuardSecurityConfig(
+            Config(values), new FakeEnv(Environments.Production)));
+
+        Assert.Contains("YouTubeComments:Slack:SocketMode:Enabled", ex.Message);
+    }
+
+    [Fact]
+    public void Socket_mode_off_keeps_production_boot_clean()
+    {
+        // Both flags explicitly false (the docker-compose default) — the guard must NOT trip.
+        var values = ValidSecrets();
+        values["YouTubeUploads:Slack:SocketMode:Enabled"] = "false";
+        values["YouTubeComments:Slack:SocketMode:Enabled"] = "false";
+
+        var ex = Record.Exception(() => DependencyInjection.GuardSecurityConfig(
+            Config(values), new FakeEnv(Environments.Production)));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Development_allows_socket_mode_enabled()
+    {
+        // Socket Mode is a dev feature — Development must accept it (the guard returns early there).
+        var values = ValidSecrets();
+        values["YouTubeUploads:Slack:SocketMode:Enabled"] = "true";
+        values["YouTubeComments:Slack:SocketMode:Enabled"] = "true";
+
+        var ex = Record.Exception(() => DependencyInjection.GuardSecurityConfig(
+            Config(values), new FakeEnv(Environments.Development)));
+
+        Assert.Null(ex);
+    }
 }

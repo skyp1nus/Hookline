@@ -14,6 +14,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Hookline.Modules.YouTubeUploads\Hookline.Modules.YouTubeUploads.csproj" />
+    <!-- Dev Slack harness — SlackHarnessParityTests proves its signer matches the real verifier. -->
+    <ProjectReference Include="..\..\tools\Hookline.DevTools.SlackHarness\Hookline.DevTools.SlackHarness.csproj" />
   </ItemGroup>
 
 </Project>

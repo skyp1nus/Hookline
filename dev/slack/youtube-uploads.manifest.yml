@@ -1,0 +1,40 @@
+# Slack app manifest — Hookline "YouTube Uploads" (ONE of the two per-module apps).
+# Create at https://api.slack.com/apps → "Create New App" → "From a manifest" → paste this.
+# Socket Mode is ON, so no Request URLs are needed for events/interactivity. After creating:
+#   1. Basic Information → App-Level Tokens → generate a token with scope `connections:write`
+#      (this is the xapp-… UPLOADS_SLACK_APP_TOKEN — manifests cannot create it).
+#   2. Basic Information → App Credentials → copy Signing Secret + Client ID + Client Secret into .env.
+#   3. Install to the workspace via the Hookline panel → Connections → Slack (the OAuth flow), then
+#      /invite the bot into the channels you map.
+# See docs/dev/local-testing.md.
+display_information:
+  name: Hookline YouTube Uploads
+  description: Templated Slack message -> private YouTube upload.
+features:
+  bot_user:
+    display_name: hookline-uploads
+    always_online: true
+oauth_config:
+  redirect_urls:
+    - https://hookline-dev.danielhub.dev/slack/youtube-uploads/oauth/callback
+    - http://localhost:8080/slack/youtube-uploads/oauth/callback
+  scopes:
+    bot:
+      - chat:write
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - pins:write
+      - files:read
+settings:
+  event_subscriptions:
+    # Inbound messages the upload pipeline reacts to (public + private channels).
+    bot_events:
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: true   # cancel / confirm / decline buttons (no Request URL in Socket Mode)
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false

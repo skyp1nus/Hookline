@@ -46,6 +46,27 @@ public sealed class YouTubeUploadsOptions
         public string ClientSecret { get; set; } = "";
         /// <summary>Must match an app-configured redirect URL exactly.</summary>
         public string RedirectUri { get; set; } = "";
+
+        /// <summary>Slack app-level token (<c>xapp-…</c>, scope <c>connections:write</c>) used ONLY by the
+        /// dev-only Socket Mode client to open the WebSocket. It is a CONFIG secret, not a per-workspace
+        /// Connections token, so it lives here and never in the shared Connections subsystem. Empty unless
+        /// Socket Mode is enabled.</summary>
+        public string? AppToken { get; set; }
+
+        /// <summary>Dev-only inbound Slack transport. See <see cref="SocketModeSettings"/>.</summary>
+        public SocketModeSettings SocketMode { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Dev-only Slack Socket Mode. When <see cref="Enabled"/> is true the module opens a WebSocket to Slack
+    /// (using <see cref="SlackSettings.AppToken"/>) and dispatches inbound events/interactivity to the SAME
+    /// reusable handlers the HTTP webhook uses — so a developer can test inbound Slack with no public tunnel.
+    /// It is OFF by default and REFUSED at boot in Production (mirrors <c>Auth:DevNoAuth</c>); the HTTP webhook
+    /// endpoints remain the canonical production path.
+    /// </summary>
+    public sealed class SocketModeSettings
+    {
+        public bool Enabled { get; set; }
     }
 
     public sealed class GoogleSettings

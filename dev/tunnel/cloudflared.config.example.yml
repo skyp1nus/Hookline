@@ -1,0 +1,18 @@
+# ── Hookline stable dev tunnel (cloudflared) ────────────────────────────────────────────────────────
+# Copy this file to dev/tunnel/cloudflared.config.yml and fill in the two placeholders printed by
+#   cloudflared tunnel create hookline-dev
+# (the tunnel UUID + the credentials JSON path under ~/.cloudflared/). dev/tunnel/run.sh runs it.
+#
+# The tunnel forwards the stable public host hookline-dev.danielhub.dev to the backend on :8080, so the
+# value here MUST match TUNNEL_URL in .env and every redirect/webhook URI registered in Google + both
+# Slack apps. One-time human setup (login + DNS route) is in docs/dev/local-testing.md (HUMAN TODO).
+
+tunnel: <TUNNEL_ID>
+credentials-file: ~/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  # Everything for the stable dev host goes to the local backend.
+  - hostname: hookline-dev.danielhub.dev
+    service: http://localhost:8080
+  # Required catch-all: anything else gets a 404 from cloudflared itself.
+  - service: http_status:404

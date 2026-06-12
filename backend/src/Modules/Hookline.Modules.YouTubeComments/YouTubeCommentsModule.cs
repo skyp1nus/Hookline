@@ -90,6 +90,12 @@ public sealed class YouTubeCommentsModule : IModule
 
         // Startup: reconcile per-mapping recurring jobs + register the static delivery/retention jobs.
         services.AddHostedService<YouTubeCommentsStartupService>();
+
+        // DEV-ONLY inbound Slack transport (Socket Mode). No-op unless YouTubeComments:Slack:SocketMode:Enabled
+        // is true; REFUSED at boot in Production by GuardSecurityConfig. The signature-verified HTTP webhook
+        // (/slack/youtube-comments/interactivity) remains the canonical production path; this module-local service
+        // just lets a developer test the "Reject on YouTube" button without a public tunnel. No cross-module dispatcher.
+        services.AddHostedService<SlackSocketModeService>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)

@@ -60,6 +60,11 @@ services:
       YouTubeUploads__Slack__ClientId: ${SLACK_CLIENT_ID:-}
       YouTubeUploads__Slack__ClientSecret: ${SLACK_CLIENT_SECRET:-}
       YouTubeUploads__Slack__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/slack/youtube-uploads/oauth/callback
+      # Dev-only Slack Socket Mode (inbound events with NO public tunnel). OFF by default; the backend
+      # REFUSES to boot with this true in Production (mirrors Auth__DevNoAuth). The app-level token
+      # (xapp-…, scope connections:write) is CONFIG-only — not a Connections-stored workspace token.
+      YouTubeUploads__Slack__SocketMode__Enabled: ${UPLOADS_SLACK_SOCKET_MODE:-false}
+      YouTubeUploads__Slack__AppToken: ${UPLOADS_SLACK_APP_TOKEN:-}
       YouTubeUploads__Google__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/google/youtube-uploads/oauth/callback
       YouTubeUploads__Google__SeedClientId: ${GOOGLE_CLIENT_ID:-}
       YouTubeUploads__Google__SeedClientSecret: ${GOOGLE_CLIENT_SECRET:-}
@@ -73,6 +78,10 @@ services:
       YouTubeComments__Slack__ClientId: ${SLACK_COMMENTS_CLIENT_ID:-}
       YouTubeComments__Slack__ClientSecret: ${SLACK_COMMENTS_CLIENT_SECRET:-}
       YouTubeComments__Slack__RedirectUri: ${TUNNEL_URL:-http://localhost:8080}/slack/youtube-comments/oauth/callback
+      # Dev-only Slack Socket Mode for the "Reject on YouTube" button (no public tunnel). OFF by default;
+      # the backend REFUSES to boot with this true in Production. App-level token (xapp-…) is CONFIG-only.
+      YouTubeComments__Slack__SocketMode__Enabled: ${COMMENTS_SLACK_SOCKET_MODE:-false}
+      YouTubeComments__Slack__AppToken: ${COMMENTS_SLACK_APP_TOKEN:-}
       YouTubeComments__PublicBaseUrl: ${TUNNEL_URL:-http://localhost:8080}
       YouTubeComments__AdminPanelUrl: http://localhost:3000
     ports:

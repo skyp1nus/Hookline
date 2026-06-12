@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Hookline.DevTools.SlackHarness</RootNamespace>
+    <!-- TFM / Nullable / ImplicitUsings come from backend/Directory.Build.props. Pure BCL — no packages. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The signature-parity tests live in the module test projects and reference this tool to prove
+         SlackRequestSigner is byte-for-byte compatible with the real SlackSignatureVerifier. -->
+    <InternalsVisibleTo Include="Hookline.Modules.YouTubeUploads.Tests" />
+    <InternalsVisibleTo Include="Hookline.Modules.YouTubeComments.Tests" />
+  </ItemGroup>
+
+</Project>
