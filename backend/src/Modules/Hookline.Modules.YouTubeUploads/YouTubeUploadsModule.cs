@@ -72,6 +72,8 @@ public sealed class YouTubeUploadsModule : IModule
         services.AddScoped<IGoogleChannelCredentials, GoogleChannelCredentials>();
         services.AddScoped<SlackChannelService>();
         services.AddScoped<UploadsReadService>();
+        // Read-only aggregate for the host's /api/overview Uploads panel.
+        services.AddScoped<UploadsOverviewService>();
         services.AddScoped<SlackIngestService>();
         services.AddScoped<UploadJobHandler>();
 

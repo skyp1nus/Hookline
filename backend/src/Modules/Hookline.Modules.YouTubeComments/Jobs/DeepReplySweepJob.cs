@@ -11,6 +11,8 @@ using Hookline.SharedKernel.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
+using StackExchange.Redis;
+
 namespace Hookline.Modules.YouTubeComments.Jobs;
 
 /// <summary>
@@ -28,6 +30,7 @@ public sealed class DeepReplySweepJob(
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
     ICommentsAudit audit,
+    IConnectionMultiplexer redis,
     ILogger<DeepReplySweepJob> logger)
 {
     // Page caps bound the worst-case quota a single sweep can spend.
@@ -86,6 +89,10 @@ public sealed class DeepReplySweepJob(
             return;
         }
 
+        // Real YouTube Data API units this sweep spends; accumulated as each youtube.* call returns and
+        // charged ONCE to the per-PT-day metered counter in the finally below — so spend is metered on
+        // every path, including the early "no threads" return and the quotaExceeded throw.
+        var unitsUsed = 0;
         try
         {
             var now = DateTimeOffset.UtcNow;
@@ -94,7 +101,7 @@ public sealed class DeepReplySweepJob(
             var since = windowStart > mapping.CommentsSinceUtc ? windowStart : mapping.CommentsSinceUtc;
 
             var fetch = await youtube.GetCommentThreadsSinceAsync(credential.AccessToken, ytChannel.YouTubeChannelId, since, MaxScanPages, ct);
-            var unitsUsed = fetch.UnitsUsed;
+            unitsUsed = fetch.UnitsUsed;
 
             if (fetch.Threads.Count == 0)
                 return;
@@ -260,6 +267,13 @@ public sealed class DeepReplySweepJob(
         {
             await audit.LogAsync(AuditLevel.Error, "ReplySweep", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
             logger.LogError(ex, "Reply sweep failed for mapping {MappingId}", mappingId);
+        }
+        finally
+        {
+            // Meter the REAL units this sweep spent against the single OAuth project's per-PT-day counter —
+            // best-effort and self-expiring (charged once here so it counts even on the early-return and
+            // exception paths).
+            await RedisKeys.ChargeQuotaUnitsAsync(redis, unitsUsed);
         }
     }
 }

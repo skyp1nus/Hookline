@@ -74,6 +74,8 @@ public sealed class YouTubeCommentsModule : IModule
         services.AddScoped<SlackChannelService>();
         services.AddScoped<MappingService>();
         services.AddScoped<DashboardService>();
+        // Read-only cross-table aggregate for the host's /api/overview Comments panel.
+        services.AddScoped<CommentsOverviewService>();
 
         // Recurring + enqueued job handlers (Hangfire activates from a per-job DI scope).
         services.AddScoped<PollCommentsJob>();

@@ -49,6 +49,17 @@ public interface ISlackConnections
 
     /// <summary>Deactivate a workspace and publish <see cref="SlackWorkspaceDisconnected"/>.</summary>
     Task<bool> DeactivateAsync(Guid workspaceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// HARD-removes the workspace row — and with it its encrypted bot token column — then publishes
+    /// <see cref="SlackWorkspaceDisconnected"/> so dependent modules tear down (drop mappings + cached
+    /// channels). This is the real disconnect: the workspace must NOT survive as an "Inactive" row that
+    /// keeps appearing in <see cref="ListAsync"/> or hand a stale bot token to <see cref="GetBotTokenAsync"/>.
+    /// Returns <c>false</c> when no workspace with that id exists.
+    /// </summary>
+    /// <remarks>A default no-op is provided only so lightweight in-memory test doubles need not override it;
+    /// the production store overrides it with the real delete + event publish.</remarks>
+    Task<bool> RemoveAsync(Guid workspaceId, CancellationToken ct = default) => Task.FromResult(false);
 }
 
 public sealed record GoogleAccessCredential(

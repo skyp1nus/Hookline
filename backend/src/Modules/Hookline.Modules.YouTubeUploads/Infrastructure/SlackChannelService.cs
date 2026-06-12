@@ -64,9 +64,9 @@ public sealed class SlackChannelService(
             .ToDictionaryAsync(x => x.WorkspaceId, x => x.Count, ct);
 
         // Only surface THIS app's active workspaces. Each tool is its own Slack app, so the shared store
-        // also holds the Comments app's rows — filter to this module's app. Disconnect soft-deactivates the
-        // row (DeactivateAsync fans out SlackWorkspaceDisconnected for dependent cleanup); the deactivated
-        // row is kept for audit/history but must not linger as an "Inactive" card in the UI.
+        // also holds the Comments app's rows — filter to this module's app. Disconnect HARD-removes the row
+        // (RemoveAsync deletes it + its encrypted bot token and fans out SlackWorkspaceDisconnected for
+        // dependent cleanup), so a disconnected workspace simply isn't in the list — never an "Inactive" card.
         return list
             .Where(w => w.App == AppKey && w.IsActive)
             .Select(w => new SlackWorkspaceDto(
@@ -138,17 +138,14 @@ public sealed class SlackChannelService(
         return await ListAllMemberChannelsAsync(ct);
     }
 
-    public async Task<bool> DeleteWorkspaceAsync(Guid id, CancellationToken ct = default)
-    {
-        var ok = await workspaces.DeactivateAsync(id, ct); // publishes SlackWorkspaceDisconnected
-        var channels = await db.SlackChannels.Where(c => c.WorkspaceId == id).ToListAsync(ct);
-        if (channels.Count > 0)
-        {
-            db.SlackChannels.RemoveRange(channels);
-            await db.SaveChangesAsync(ct);
-        }
-        return ok;
-    }
+    /// <summary>HARD-removes the workspace from the shared store (deletes the row + its encrypted bot token)
+    /// and fans out <c>SlackWorkspaceDisconnected</c>. The disconnected handler tears down this module's
+    /// channel mappings + cached channels synchronously, so disconnect leaves nothing behind. Returns
+    /// <c>false</c> when the workspace is not found.</summary>
+    public Task<bool> DeleteWorkspaceAsync(Guid id, CancellationToken ct = default) =>
+        // RemoveAsync publishes SlackWorkspaceDisconnected, whose handler (SlackWorkspaceDisconnectedHandler)
+        // removes this module's cached channels + mappings — so no direct SlackChannels delete is needed here.
+        workspaces.RemoveAsync(id, ct);
 
     /// <summary>Decrypted bot token of the workspace that owns the given Slack channel id, or null.</summary>
     public async Task<string?> GetBotTokenForChannelAsync(string slackChannelId, CancellationToken ct = default)

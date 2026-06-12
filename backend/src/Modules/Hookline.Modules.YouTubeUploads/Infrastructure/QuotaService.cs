@@ -31,8 +31,11 @@ public interface IQuotaService
     Task<bool> TryReserveUploadAsync(Guid projectId);
     /// <summary>Give one reserved upload back (only when reserved but videos.insert was never called).</summary>
     Task ReleaseUploadAsync(Guid projectId);
-    /// <summary>Charge units to the project's non-upload pool meter (e.g. channels.list ≈ 1 unit). Best-effort,
-    /// for the daily-spend display only — never gates anything.</summary>
+    /// <summary>Charge units to the project's non-upload pool meter — a SEPARATE Redis key from the
+    /// videos.insert upload bucket, so the two dimensions never share a budget. Every non-upload YouTube
+    /// Data API read MUST call this (channels.list ≈ 1u, etc.) or the pool meter stays stuck at 0 despite
+    /// real spend. videos.insert must NOT call it (that is the upload bucket, gated by
+    /// <see cref="TryReserveUploadAsync"/>). Best-effort, display-only — never gates anything.</summary>
     Task ChargeUnitsAsync(Guid projectId, int units);
 }
 

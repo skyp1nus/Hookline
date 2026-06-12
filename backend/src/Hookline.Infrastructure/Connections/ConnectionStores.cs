@@ -68,6 +68,23 @@ public sealed class SlackConnections(ConnectionsDbContext db, IEventBus events) 
         await events.PublishAsync(new SlackWorkspaceDisconnected(workspaceId), ct);
         return true;
     }
+
+    public async Task<bool> RemoveAsync(Guid workspaceId, CancellationToken ct = default)
+    {
+        var ws = await db.SlackWorkspaces.FirstOrDefaultAsync(w => w.Id == workspaceId, ct);
+        if (ws is null)
+        {
+            return false;
+        }
+
+        // Delete the whole row — the encrypted bot token lives in this row's BotTokenEncrypted column, so
+        // removing the row removes the secret with it. After this, ListAsync no longer returns the workspace
+        // (no lingering "Inactive" card) and GetBotTokenAsync resolves to null.
+        db.SlackWorkspaces.Remove(ws);
+        await db.SaveChangesAsync(ct);
+        await events.PublishAsync(new SlackWorkspaceDisconnected(workspaceId), ct);
+        return true;
+    }
 }
 
 /// <summary>Reads/writes Google accounts in the shared store. The decrypted refresh token is handed to

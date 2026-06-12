@@ -16,7 +16,8 @@ public sealed record SlackChannelDto(Guid Id, string SlackChannelId, string Name
 /// Bridges the module to the shared Slack Connections store. Workspaces (bot tokens) live in the
 /// shared <c>connections</c> schema; this owns only the module-local channel cache (the mapping
 /// picker). Connect goes through the provider OAuth callback (upsert into the shared store); disconnect
-/// deactivates the shared workspace, which fans out a <c>SlackWorkspaceDisconnected</c> event.
+/// HARD-removes the shared workspace (deleting its encrypted bot token), which fans out a
+/// <c>SlackWorkspaceDisconnected</c> event whose handler tears down this module's mappings + channel cache.
 /// </summary>
 public sealed class SlackChannelService(
     YouTubeCommentsDbContext db,
@@ -124,11 +125,12 @@ public sealed class SlackChannelService(
             .ToArrayAsync(ct);
     }
 
-    /// <summary>Disconnects a workspace from the shared store (fans out <c>SlackWorkspaceDisconnected</c>).
-    /// Returns <c>false</c> when not found.</summary>
+    /// <summary>HARD-removes a workspace from the shared store — deleting the row + its encrypted bot token —
+    /// and fans out <c>SlackWorkspaceDisconnected</c>, whose handler drops this module's mappings + cached
+    /// channels. Returns <c>false</c> when not found.</summary>
     public async Task<bool> DeleteWorkspaceAsync(Guid id, CancellationToken ct = default)
     {
-        if (!await slackConnections.DeactivateAsync(id, ct))
+        if (!await slackConnections.RemoveAsync(id, ct))
             return false;
 
         await audit.LogAsync(AuditLevel.Information, "Slack",

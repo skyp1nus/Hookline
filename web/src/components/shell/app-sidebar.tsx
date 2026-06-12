@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { usePlatform } from "@/components/platform-context";
@@ -119,10 +120,29 @@ function LeafNav({ leaf, activeId }: { leaf: SidebarLeaf; activeId: string | nul
 function ToolNav({ tool, activeId }: { tool: SidebarTool; activeId: string | null }) {
   const Icon = tool.icon;
   const childActive = tool.children.some((c) => c.id === activeId);
+  const storageKey = "hookline.sidebar.tool." + tool.id;
+  // SSR-safe: start from the deterministic `childActive` default; never read
+  // localStorage during render. The effect below reconciles with any stored
+  // preference once mounted on the client.
+  const [open, setOpen] = useState(childActive);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored === "1") setOpen(true);
+    else if (stored === "0") setOpen(false);
+    // No stored value → keep the childActive default (auto-open active group).
+  }, [storageKey]);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    window.localStorage.setItem(storageKey, next ? "1" : "0");
+  };
+
   return (
     <Collapsible
       asChild
-      defaultOpen={tool.defaultOpen || childActive}
+      open={open}
+      onOpenChange={handleOpenChange}
       className="group/collapsible"
     >
       <SidebarMenuItem>

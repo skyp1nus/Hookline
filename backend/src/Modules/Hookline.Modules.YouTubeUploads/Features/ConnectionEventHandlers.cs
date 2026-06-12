@@ -45,8 +45,11 @@ public sealed class GoogleAccountDisconnectedHandler(
 }
 
 /// <summary>When a shared Slack workspace is disconnected, drop its channel mappings + cached channels.
-/// The channel list is a rebuildable cache (re-synced from Slack on reconnect) so it is hard-deleted; the
-/// disconnect action itself is preserved in the shared audit trail.</summary>
+/// Disconnect now HARD-removes the shared workspace row upstream (token gone), so by the time this runs the
+/// workspace no longer exists — this handler only touches module-local tables keyed by the workspace id, so
+/// it has no dependency on the connections row still being present. The channel list is a rebuildable cache
+/// (re-synced from Slack on reconnect) so it is hard-deleted; the disconnect action is preserved in the
+/// shared audit trail.</summary>
 public sealed class SlackWorkspaceDisconnectedHandler(
     YouTubeUploadsDbContext db,
     ChannelMappingService mappings,

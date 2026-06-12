@@ -11,6 +11,8 @@ using Hookline.SharedKernel.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
+using StackExchange.Redis;
+
 namespace Hookline.Modules.YouTubeComments.Jobs;
 
 /// <summary>
@@ -29,6 +31,7 @@ public sealed class PollCommentsJob(
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
     ICommentsAudit audit,
+    IConnectionMultiplexer redis,
     ILogger<PollCommentsJob> logger)
 {
     // The shared force-ssl credential contract is implemented by the Uploads module; consumed
@@ -106,13 +109,17 @@ public sealed class PollCommentsJob(
             return;
         }
 
+        // Real YouTube Data API units this run spends; accumulated as each youtube.* call returns and
+        // charged ONCE to the per-PT-day metered counter in the finally below — so spend is metered on
+        // every path, including the quotaExceeded throw (units already burned server-side before it).
+        var unitsUsed = 0;
         try
         {
             var now = DateTimeOffset.UtcNow;
 
             // 3. Fetch the most recent comment threads (incl. inline replies) for the channel.
             var fetch = await youtube.GetRecentCommentsAsync(credential.AccessToken, ytChannel.YouTubeChannelId, MaxComments, ct);
-            var unitsUsed = fetch.UnitsUsed;
+            unitsUsed = fetch.UnitsUsed;
 
             // 4. Narrow to candidates: drop replies unless opted in, and anything at/under the watermark.
             var candidates = fetch.Comments
@@ -272,6 +279,12 @@ public sealed class PollCommentsJob(
             await audit.LogAsync(AuditLevel.Error, "Polling", ex.Message, "ChannelMapping", mappingId.ToString(), ct: ct);
             await SetLastErrorAsync(mapping, ex.Message, ct);
             logger.LogError(ex, "Poll failed for mapping {MappingId}", mappingId);
+        }
+        finally
+        {
+            // Meter the REAL units this run spent against the single OAuth project's per-PT-day counter —
+            // best-effort and self-expiring (charged once here so it counts even on the exception paths).
+            await RedisKeys.ChargeQuotaUnitsAsync(redis, unitsUsed);
         }
     }
 

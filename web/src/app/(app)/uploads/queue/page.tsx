@@ -1,11 +1,9 @@
 "use client";
 
-import { Inbox, Plus } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { SlackIcon } from "@/components/brand-icons";
 import { PageHeading } from "@/components/page-heading";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { type Job } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -97,15 +95,9 @@ export default function QueuePage() {
         title="Queue"
         description="Live upload jobs from Slack. Cards update in place as they progress."
         actions={
-          <>
-            <div className="mr-1 flex items-center gap-[7px] text-[12.5px] text-muted-foreground">
-              <span className="size-[7px] animate-pulse-dot rounded-full bg-ok" />2 workers online
-            </div>
-            <Button size="sm">
-              <Plus className="size-3.5" />
-              Queue an upload
-            </Button>
-          </>
+          <div className="mr-1 flex items-center gap-[7px] text-[12.5px] text-muted-foreground">
+            <span className="size-[7px] animate-pulse-dot rounded-full bg-ok" />2 workers online
+          </div>
         }
       />
 
@@ -160,16 +152,6 @@ function QueueEmpty() {
           Post a templated message with a Google Drive link in a mapped Slack channel, and the job
           will appear here automatically.
         </p>
-        <div className="flex gap-[9px]">
-          <Button variant="outline" size="sm">
-            <SlackIcon className="size-[15px]" />
-            View Slack mappings
-          </Button>
-          <Button size="sm">
-            <Plus className="size-[15px]" />
-            Queue an upload
-          </Button>
-        </div>
       </div>
     </Card>
   );
