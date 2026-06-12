@@ -107,6 +107,17 @@ export function useUploadMappingOptions(enabled = true) {
   });
 }
 
+/**
+ * Re-sync the Slack channel caches for all active workspaces. The picker reads a module-local cache that is
+ * otherwise only synced on Slack OAuth connect, so the Add-route dialog fires this on open to surface channels
+ * created/joined since. Best-effort on the backend; the options query reads the freshened cache afterwards.
+ */
+export function useRefreshUploadSlackChannels() {
+  return useMutation({
+    mutationFn: () => api.post("/youtube-uploads/slack/refresh-channels"),
+  });
+}
+
 export function useCreateUploadMapping() {
   const qc = useQueryClient();
   return useMutation({

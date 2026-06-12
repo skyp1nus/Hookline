@@ -21,7 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiErrorMessage } from "@/lib/api/client";
-import { useCreateUploadMapping, useUploadMappingOptions } from "@/features/uploads/hooks";
+import {
+  useCreateUploadMapping,
+  useRefreshUploadSlackChannels,
+  useUploadMappingOptions,
+} from "@/features/uploads/hooks";
 
 /**
  * Create an upload route (Slack channel → Google account) via the real `POST /youtube-uploads/mappings`.
@@ -36,22 +40,29 @@ export function AddRouteDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const optionsQuery = useUploadMappingOptions(open);
+  const refresh = useRefreshUploadSlackChannels();
   const createMapping = useCreateUploadMapping();
+  // Only read options once the on-open refresh settles, so the picker never shows the stale pre-refresh cache.
+  const optionsQuery = useUploadMappingOptions(open && (refresh.isSuccess || refresh.isError));
 
   const [slackChannelId, setSlackChannelId] = useState("");
   const [googleAccountId, setGoogleAccountId] = useState("");
 
   useEffect(() => {
-    if (open) {
-      setSlackChannelId("");
-      setGoogleAccountId("");
-    }
+    if (!open) return;
+    setSlackChannelId("");
+    setGoogleAccountId("");
+    // Sync every active workspace's channels before loading the picker; `reset` re-arms it on each reopen.
+    refresh.reset();
+    refresh.mutate();
+    // `refresh` is a stable react-query handle — re-run only when the dialog (re)opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const slackChannels = optionsQuery.data?.slackChannels ?? [];
   const googleAccounts = optionsQuery.data?.googleAccounts ?? [];
   const busy = createMapping.isPending;
+  const loadingOptions = refresh.isPending || optionsQuery.isFetching;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -86,11 +97,15 @@ export function AddRouteDialog({
         <form id="add-route-form" onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="slack-channel">Slack channel</Label>
-            <Select value={slackChannelId} onValueChange={setSlackChannelId}>
+            <Select value={slackChannelId} onValueChange={setSlackChannelId} disabled={loadingOptions}>
               <SelectTrigger id="slack-channel">
                 <SelectValue
                   placeholder={
-                    slackChannels.length ? "Select a channel…" : "No channels — connect Slack first"
+                    loadingOptions
+                      ? "Refreshing channels…"
+                      : slackChannels.length
+                        ? "Select a channel…"
+                        : "No channels — connect Slack first"
                   }
                 />
               </SelectTrigger>
@@ -106,11 +121,15 @@ export function AddRouteDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="yt-account">YouTube account</Label>
-            <Select value={googleAccountId} onValueChange={setGoogleAccountId}>
+            <Select value={googleAccountId} onValueChange={setGoogleAccountId} disabled={loadingOptions}>
               <SelectTrigger id="yt-account">
                 <SelectValue
                   placeholder={
-                    googleAccounts.length ? "Select an account…" : "No accounts — connect Google first"
+                    loadingOptions
+                      ? "Loading accounts…"
+                      : googleAccounts.length
+                        ? "Select an account…"
+                        : "No accounts — connect Google first"
                   }
                 />
               </SelectTrigger>

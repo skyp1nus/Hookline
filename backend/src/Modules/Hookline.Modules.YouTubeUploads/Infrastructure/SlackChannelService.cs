@@ -111,6 +111,28 @@ public sealed class SlackChannelService(
         return await ListChannelsAsync(workspaceId, ct);
     }
 
+    /// <summary>
+    /// Best-effort re-sync of every active workspace's channel cache, then the member-channel picker list.
+    /// Used to freshen the mapping picker on demand (channels created/joined since the last OAuth connect
+    /// only land in the cache here). One workspace's sync failure is logged and skipped, never aborting the rest.
+    /// </summary>
+    public async Task<IReadOnlyList<object>> RefreshAllActiveWorkspacesAsync(CancellationToken ct = default)
+    {
+        foreach (var w in (await workspaces.ListAsync(ct)).Where(w => w.IsActive))
+        {
+            try
+            {
+                await RefreshChannelsAsync(w.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Channel refresh failed for workspace {Workspace}", w.Id);
+            }
+        }
+
+        return await ListAllMemberChannelsAsync(ct);
+    }
+
     public async Task<bool> DeleteWorkspaceAsync(Guid id, CancellationToken ct = default)
     {
         var ok = await workspaces.DeactivateAsync(id, ct); // publishes SlackWorkspaceDisconnected

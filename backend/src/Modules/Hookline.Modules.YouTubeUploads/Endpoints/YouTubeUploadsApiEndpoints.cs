@@ -149,6 +149,11 @@ public static class YouTubeUploadsApiEndpoints
 
         g.MapGet("/slack/channels", async (SlackChannelService ws, CancellationToken ct) =>
             Results.Ok(await ws.ListAllMemberChannelsAsync(ct)));
+
+        // Freshen every active workspace's channel cache on demand (the Add-route picker calls this on open so
+        // newly created/joined channels show without reconnecting Slack). The GET above stays a pure read.
+        g.MapPost("/slack/refresh-channels", async (SlackChannelService ws, CancellationToken ct) =>
+            Results.Ok(await ws.RefreshAllActiveWorkspacesAsync(ct)));
     }
 
     // ── Google projects + accounts ──
