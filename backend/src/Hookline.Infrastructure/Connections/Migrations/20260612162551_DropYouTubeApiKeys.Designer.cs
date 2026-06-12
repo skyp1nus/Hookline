@@ -3,6 +3,7 @@ using System;
 using Hookline.Infrastructure.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hookline.Infrastructure.Connections.Migrations
 {
     [DbContext(typeof(ConnectionsDbContext))]
-    partial class ConnectionsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612162551_DropYouTubeApiKeys")]
+    partial class DropYouTubeApiKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -84,12 +87,6 @@ namespace Hookline.Infrastructure.Connections.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("App")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("app");
-
                     b.Property<string>("AuthedUserId")
                         .HasColumnType("text")
                         .HasColumnName("authed_user_id");
@@ -130,9 +127,9 @@ namespace Hookline.Infrastructure.Connections.Migrations
                     b.HasKey("Id")
                         .HasName("pk_slack_workspaces");
 
-                    b.HasIndex("TeamId", "App")
+                    b.HasIndex("TeamId")
                         .IsUnique()
-                        .HasDatabaseName("ix_slack_workspaces_team_id_app");
+                        .HasDatabaseName("ix_slack_workspaces_team_id");
 
                     b.ToTable("slack_workspaces", "connections");
                 });

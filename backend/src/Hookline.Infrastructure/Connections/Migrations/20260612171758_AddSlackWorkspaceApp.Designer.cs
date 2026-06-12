@@ -3,6 +3,7 @@ using System;
 using Hookline.Infrastructure.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hookline.Infrastructure.Connections.Migrations
 {
     [DbContext(typeof(ConnectionsDbContext))]
-    partial class ConnectionsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612171758_AddSlackWorkspaceApp")]
+    partial class AddSlackWorkspaceApp
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

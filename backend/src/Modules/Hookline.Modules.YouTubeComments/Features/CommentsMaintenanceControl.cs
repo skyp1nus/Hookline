@@ -52,8 +52,6 @@ public sealed class CommentsMaintenanceControl(
         db.ProcessedComments.RemoveRange(processed);
         var pending = await db.PendingDeliveries.ToListAsync(ct);
         db.PendingDeliveries.RemoveRange(pending);
-        var quota = await db.QuotaUsages.ToListAsync(ct);
-        db.QuotaUsages.RemoveRange(quota);
 
         // Keep mappings, but advance the watermark to now + clear last-run state so the wiped dedup ledger
         // can't replay old comments into Slack.
@@ -70,8 +68,8 @@ public sealed class CommentsMaintenanceControl(
 
         var purged = await cache.PurgeByPrefixAsync(RedisKeys.Prefix, ct);
 
-        var detail = $"processed={processed.Count}, pending={pending.Count}, quota={quota.Count}, watermarks={mappings.Count}, cache={purged}";
+        var detail = $"processed={processed.Count}, pending={pending.Count}, watermarks={mappings.Count}, cache={purged}";
         await audit.LogAsync(AuditLevel.Warning, "maintenance.reset", detail, ct: ct);
-        return new MaintenanceResult(Module, processed.Count + pending.Count + quota.Count, detail);
+        return new MaintenanceResult(Module, processed.Count + pending.Count, detail);
     }
 }

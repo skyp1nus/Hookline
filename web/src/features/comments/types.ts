@@ -2,18 +2,19 @@
 // Web defaults: camelCase property names and enums as their underlying NUMERIC value (there is no
 // JsonStringEnumConverter). These replace the Phase-0 mock shapes for the read path.
 
-/** `DashboardStatsDto` — a single KPI snapshot object (not an array). */
+/** `DashboardStatsDto` — a single KPI snapshot object (not an array). The quota figure is an
+ * APPROXIMATION: estimated daily units (from each active mapping's cadence) against the single OAuth
+ * project's ceiling — not metered actual usage. */
 export interface DashboardStats {
   activeMappings: number;
   totalMappings: number;
   commentsToday: number;
   commentsLast24h: number;
-  totalQuotaLimit: number;
-  totalQuotaUsedToday: number;
-  quotaUsedPercent: number;
+  quotaCeiling: number;
+  estimatedDailyUnits: number;
+  estimatedPercent: number;
   errorsLast24h: number;
   connectedWorkspaces: number;
-  apiKeyCount: number;
   channelCount: number;
 }
 
@@ -105,27 +106,19 @@ export const REPLY_SCAN_FREQUENCY_OPTIONS: { value: ReplyScanFrequency; label: s
 // The host serializes with System.Text.Json Web defaults: camelCase keys and enums as their NUMERIC
 // value. The MutationContractTests on the backend lock these shapes so the buttons can't silently break.
 
-/** `ApiKeyDto` — a stored YouTube Data API key with today's quota usage (never exposes the secret). */
-export interface ApiKeyDto {
-  id: string;
-  name: string;
-  keyHint: string;
-  dailyQuotaLimit: number;
-  isActive: boolean;
-  createdAt: string;
-  todayUnitsUsed: number;
-  remainingQuota: number;
+/** `ConnectedChannelOption` — one of the operator's own channels that CAN be monitored: a connected
+ * Google account owns it and has granted the comment-management (force-ssl) scope. Empty list ⇒ the
+ * honest "connect Google to enable monitoring" gated state. */
+export interface ConnectedChannelOption {
+  youTubeChannelId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  alreadyTracked: boolean;
 }
 
-/** `CreateApiKeyRequest` — register + validate a key (an invalid key is rejected 400, never stored). */
-export interface CreateApiKeyInput {
-  name: string;
-  apiKey: string;
-}
-
-/** `AddChannelRequest` — add a channel by raw id, `@handle`, or youtube.com URL. */
+/** `AddChannelRequest` — track one of the operator's connected channels by its channel id. */
 export interface AddChannelInput {
-  input: string;
+  youTubeChannelId: string;
 }
 
 /** `ChannelOption` / `SlackChannelOption` / `MappingOptionsDto` — the pickers for the mapping form. */

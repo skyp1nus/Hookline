@@ -25,12 +25,16 @@ public sealed class SlackChannelService(
     SlackClient slack,
     ILogger<SlackChannelService> logger)
 {
+    /// <summary>This module's Slack app key — keeps its bot token in its own row in the shared store.</summary>
+    private const string AppKey = "youtube-uploads";
+
     /// <summary>Token exchange → upsert workspace in the shared store (encrypt token) → best-effort channel sync.</summary>
     public async Task<Guid> HandleOAuthCallbackAsync(string code, string redirectUri, CancellationToken ct = default)
     {
         var oauth = await slack.ExchangeCodeAsync(code, redirectUri, ct);
 
         var workspaceId = await workspaces.UpsertWorkspaceAsync(new SlackWorkspaceWrite(
+            App: AppKey,
             TeamId: oauth.TeamId,
             TeamName: oauth.TeamName,
             BotToken: oauth.AccessToken,
@@ -59,11 +63,12 @@ public sealed class SlackChannelService(
             .Select(g => new { WorkspaceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.WorkspaceId, x => x.Count, ct);
 
-        // Only surface active workspaces. Disconnect soft-deactivates the row (DeactivateAsync fans out
-        // SlackWorkspaceDisconnected for dependent cleanup); the deactivated row is kept for audit/history
-        // but must not linger as an "Inactive" card in the UI.
+        // Only surface THIS app's active workspaces. Each tool is its own Slack app, so the shared store
+        // also holds the Comments app's rows — filter to this module's app. Disconnect soft-deactivates the
+        // row (DeactivateAsync fans out SlackWorkspaceDisconnected for dependent cleanup); the deactivated
+        // row is kept for audit/history but must not linger as an "Inactive" card in the UI.
         return list
-            .Where(w => w.IsActive)
+            .Where(w => w.App == AppKey && w.IsActive)
             .Select(w => new SlackWorkspaceDto(
                 w.Id, w.TeamId, w.TeamName, null, w.IsActive, DateTimeOffset.MinValue,
                 counts.GetValueOrDefault(w.Id)))
@@ -155,9 +160,9 @@ public sealed class SlackChannelService(
         return workspaceId is null ? null : await workspaces.GetBotTokenAsync(workspaceId.Value, ct);
     }
 
-    /// <summary>Decrypted bot token for a Slack team id (used by the events endpoint), or null.</summary>
+    /// <summary>Decrypted bot token for a Slack team id (this app, used by the events endpoint), or null.</summary>
     public Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) =>
-        workspaces.GetBotTokenForTeamAsync(teamId, ct);
+        workspaces.GetBotTokenForTeamAsync(teamId, AppKey, ct);
 
     public async Task<int> CountActiveWorkspacesAsync(CancellationToken ct = default) =>
         (await workspaces.ListAsync(ct)).Count(w => w.IsActive);

@@ -27,7 +27,6 @@ export interface Platform {
   uploads: string;
   channels: string;
   account: string;
-  keys: string;
 }
 
 export const PLATFORMS: Platform[] = [
@@ -42,7 +41,6 @@ export const PLATFORMS: Platform[] = [
     uploads: "YouTube Uploads",
     channels: "Channels",
     account: "Google / YouTube",
-    keys: "YouTube API keys",
   },
   {
     id: "linkedin",
@@ -56,7 +54,6 @@ export const PLATFORMS: Platform[] = [
     uploads: "LinkedIn Posts",
     channels: "Pages",
     account: "LinkedIn account",
-    keys: "LinkedIn API keys",
   },
   {
     id: "web",
@@ -70,7 +67,6 @@ export const PLATFORMS: Platform[] = [
     uploads: "Web Publish",
     channels: "Sites",
     account: "Web account",
-    keys: "Web API keys",
   },
 ];
 

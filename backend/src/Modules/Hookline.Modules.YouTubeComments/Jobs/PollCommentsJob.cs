@@ -25,16 +25,16 @@ public sealed class PollCommentsJob(
     YouTubeCommentsDbContext db,
     IYouTubeClient youtube,
     ISlackClient slack,
-    IYouTubeApiKeyProvider keys,
+    IEnumerable<IGoogleChannelCredentials> channelCredentialProviders,
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
-    CommentModerationService moderation,
     ICommentsAudit audit,
     ILogger<PollCommentsJob> logger)
 {
-    // Each poll fetches comments (1u) and may resolve video titles (>=1u). Acquire a small budget up
-    // front so AcquireAsync rejects keys that are essentially out of quota.
-    private const int QuotaBudget = 2;
+    // The shared force-ssl credential contract is implemented by the Uploads module; consumed
+    // optionally so a build without Uploads degrades to an honest "monitoring unavailable" state.
+    private readonly IGoogleChannelCredentials? _channelCredentials = channelCredentialProviders.FirstOrDefault();
+
     private const int MaxComments = 50;
 
     // First retry of a parked delivery; the retry job backs off exponentially from here.
@@ -85,14 +85,23 @@ public sealed class PollCommentsJob(
 
         var channelLabel = ytChannel.Title;
 
-        // 2. Acquire an API key with enough remaining quota.
-        var lease = await keys.AcquireAsync(QuotaBudget, ct);
-        if (lease is null)
+        // 2. Resolve a force-ssl OAuth access token for the account that OWNS this channel — monitoring
+        // now runs on the owner credential (the SAME one the Reject button uses), not an API key. A
+        // missing credential is the honest gated state: surface it, don't fail silently or every tick.
+        if (_channelCredentials is null)
         {
-            const string msg = "No API key with available quota";
+            const string msg = "Comment monitoring is unavailable — the Google credentials provider is not loaded.";
             await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
-            mapping.LastError = msg;
-            await db.SaveChangesAsync(ct);
+            await SetLastErrorAsync(mapping, msg, ct);
+            return;
+        }
+
+        var credential = await _channelCredentials.GetChannelCredentialAsync(ytChannel.YouTubeChannelId, ct);
+        if (credential is null)
+        {
+            const string msg = "No Google account connected for this channel — connect or re-consent it in Connections → Google to enable monitoring.";
+            await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
+            await SetLastErrorAsync(mapping, msg, ct);
             logger.LogWarning("Poll for {MappingId} skipped: {Message}", mappingId, msg);
             return;
         }
@@ -102,7 +111,7 @@ public sealed class PollCommentsJob(
             var now = DateTimeOffset.UtcNow;
 
             // 3. Fetch the most recent comment threads (incl. inline replies) for the channel.
-            var fetch = await youtube.GetRecentCommentsAsync(lease.ApiKey, ytChannel.YouTubeChannelId, MaxComments, ct);
+            var fetch = await youtube.GetRecentCommentsAsync(credential.AccessToken, ytChannel.YouTubeChannelId, MaxComments, ct);
             var unitsUsed = fetch.UnitsUsed;
 
             // 4. Narrow to candidates: drop replies unless opted in, and anything at/under the watermark.
@@ -142,17 +151,16 @@ public sealed class PollCommentsJob(
             if (newComments.Count > 0)
             {
                 var videoIds = newComments.Select(c => c.VideoId).Where(v => !string.IsNullOrEmpty(v));
-                var titlesResult = await youtube.GetVideoTitlesAsync(lease.ApiKey, videoIds, ct);
+                var titlesResult = await youtube.GetVideoTitlesAsync(credential.AccessToken, videoIds, ct);
                 unitsUsed += titlesResult.UnitsUsed;
 
                 // Slack ts of top-level comments posted in THIS run, so a same-run reply threads under
                 // its parent without a database round-trip.
                 var tsThisRun = new Dictionary<string, string>(StringComparer.Ordinal);
 
-                // Whether the owning Google account can moderate (force-ssl) — decides whether each card
-                // shows an active Reject button or the proactive "re-consent to enable" link. Resolved
-                // once per run for the channel, not per comment.
-                var canModerate = await moderation.CanModerateAsync(ytChannel.YouTubeChannelId, ct);
+                // We hold a force-ssl credential for this channel (resolved above), so the Reject button
+                // can act — read and moderate share the one credential (consistent gating by construction).
+                const bool canModerate = true;
 
                 foreach (var comment in newComments)
                 {
@@ -200,8 +208,8 @@ public sealed class PollCommentsJob(
                 }
             }
 
-            // 7. Record quota + finalize mapping state.
-            await keys.RecordUsageAsync(lease.Id, unitsUsed, ct);
+            // 7. Finalize mapping state. (unitsUsed is reported in the audit detail as telemetry; with a
+            // single OAuth project there is no per-key quota ledger to write — see the dashboard estimate.)
             mapping.LastPolledAt = now;
             if (channelGone)
             {
@@ -235,28 +243,23 @@ public sealed class PollCommentsJob(
         }
         catch (GoogleApiException ex) when (ex.HasReason("quotaExceeded"))
         {
-            // The key is out of quota server-side. Pin it exhausted so the next tick rotates. Don't crash.
-            await keys.MarkExhaustedAsync(lease.Id, ct);
-            var msg = $"Quota exhausted on key '{lease.Name}'; will rotate on next run";
+            // The single OAuth project is out of quota server-side. No key to rotate — surface it
+            // honestly; the next scheduled tick is a natural retry once the Pacific-day quota rolls over.
+            var msg = "YouTube quota for the connected account is exhausted; will retry next run";
             await audit.LogAsync(AuditLevel.Warning, "Quota", msg, "ChannelMapping", mappingId.ToString(), ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);
-            logger.LogWarning(ex, "Quota exceeded for mapping {MappingId} on key {Key}", mappingId, lease.Name);
+            logger.LogWarning(ex, "Quota exceeded for mapping {MappingId}", mappingId);
         }
-        catch (GoogleApiException ex) when (ex.IsKeyInvalid())
+        catch (GoogleApiException ex) when ((int)ex.HttpStatusCode == 401)
         {
-            // The key itself is dead (revoked/invalid/expired/restricted, or API not enabled). Disable it
-            // so it leaves the rotation pool instead of failing every tick; the next tick rotates to
-            // another key. An admin re-enables it after fixing the credential.
-            await keys.MarkInvalidAsync(lease.Id, ct);
-            var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
-            var msg = $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})";
-            await audit.LogAsync(AuditLevel.Warning, "ApiKey", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
+            // The OAuth credential was rejected (revoked / re-consent needed). Surface a reconnect hint.
+            var msg = "Google authorization failed — re-connect the account in Connections → Google to resume monitoring";
+            await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);
-            logger.LogWarning(ex, "API key {Key} disabled for mapping {MappingId}: {Reason}", lease.Name, mappingId, reason);
+            logger.LogWarning(ex, "OAuth unauthorized for mapping {MappingId}", mappingId);
         }
         catch (GoogleApiException ex) when (ex.HasReason("commentsDisabled") || (int)ex.HttpStatusCode == 403)
         {
-            await keys.RecordUsageAsync(lease.Id, 1, ct);
             var msg = "Comments unavailable for this channel (disabled or forbidden)";
             await audit.LogAsync(AuditLevel.Warning, "Polling", msg, "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
             await SetLastErrorAsync(mapping, msg, ct);

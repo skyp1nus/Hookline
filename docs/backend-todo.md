@@ -6,6 +6,55 @@ the ones with no real backend. **Zero "backend pending" controls remain.**
 
 ---
 
+## YouTube Comments → OAuth-only (API-key subsystem removed)
+
+Comment **monitoring** (poll + reply + deep-scan) no longer uses YouTube Data API keys. It resolves a
+`youtube.force-ssl` access token for the channel's **owning Google account** through the SharedKernel
+`IGoogleChannelCredentials.GetChannelCredentialAsync` contract — the **same** credential the "Reject on
+YouTube" button uses, so monitoring-gating and reject-gating are consistent by construction. Comments still
+depends only on the SharedKernel contract (one ProjectReference); Uploads stays the sole implementer.
+Boundary proven with an illegal-ref experiment (a real Comments→Uploads type-use turns
+`Modules_do_not_reference_other_modules` **RED**; reverted → GREEN). *Note: a bare ProjectReference alone is
+elided by the compiler and does NOT trip the assembly-reference guard — the experiment needs actual type
+usage to bite.*
+
+**Removed entirely:** the shared `connections.api_keys` table + `YouTubeApiKey` entity/store +
+`IYouTubeApiKeyConnections` accessor + `ConnectionType.YouTubeApiKey` + `YouTubeApiKeyDisconnected` event
+(SharedKernel/Infrastructure); the Comments `IYouTubeApiKeyProvider`/`YouTubeApiKeyProvider`/`ApiKeyService`,
+the `quota_usage` table + `QuotaUsage` entity + its disconnect handler, key-rotation, and
+`IYouTubeClient.ValidateKeyAsync`/`GetChannelAsync`; the `GET/POST/PATCH/DELETE /api/youtube-comments/keys`
+routes; the web **Connections → Keys** page/route/nav/⌘K entry + the mapping-form's API-key gate. Two
+`DropTable` migrations (`connections.api_keys`, `youtube_comments.quota_usage`) run under the boot advisory
+lock. `RequiredConnections` now lists Google as **required** (was optional).
+
+**Behavioral change (intended):** with API keys you could monitor any public channel; with OAuth you can
+only monitor channels a connected, force-ssl Google account **owns** (our own channels). The add-channel
+picker offers only those (`GET /api/youtube-comments/youtube/channels/available`); an empty list is the honest
+"connect Google to enable monitoring" gated state.
+
+**Honest gated state (where it lives):** the **run-time** poll/sweep is the single source of truth — if no
+force-ssl credential resolves for a channel, the job sets `mapping.LastError` ("connect/re-consent Google to
+enable monitoring") + a Warning audit and returns (no crash, visible in the mappings table + dashboard
+errors KPI), and **self-heals** on the next tick once the account connects. *Deviation from the plan's
+"don't schedule" wording:* the dynamic scheduler is **not** gated. Rationale — the credential is short-lived
+and re-resolved per poll, so run time is the only correct place to evaluate capability; a schedule-time gate
+would mint tokens on boot and need a restart to recover after reconnect, whereas the run-time gate
+self-heals. The picker guarantees a mapping is created only for a monitorable channel, so the "no account"
+state is the disconnect-after-create edge case. Revisit if a scheduler-level skip is wanted.
+
+**Estimated quota (dashboard):** with per-key accounting gone, the dashboard shows an **approximation** (UI
+labelled "≈ estimated"), not metered usage: `Σ active mappings (pollsPerDay×2 + sweepsPerDay×30)` against the
+single project's `DailyQuotaUnits` ceiling (10,000). `sweepEstimate = 30u` is a deliberately **conservative**
+over-estimate (real sweep cost varies); the ceiling assumes **one** Google project and must rise to the sum
+if a second is ever connected. Prefer over- to under-estimating so the operator never silently hits the cap.
+
+**Out of scope / flagged:** the **Uploads** Phase-0 mock (`web/src/lib/mock-data.ts`) still has a `key`
+column on upload routes + a couple of `prod-yt-0x` strings — uploads-domain legacy sample, untouched here.
+A real per-project Redis spend counter (`ytc:quota:{projectId}:{ptDate}`, mirroring Uploads' `QuotaService`)
+is a cheap follow-on if a metered figure is ever wanted alongside the estimate.
+
+---
+
 ## ✅ Resolved (close-out pass)
 
 ### P0 — Upload-mapping Active / Pause toggle

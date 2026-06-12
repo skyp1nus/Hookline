@@ -118,7 +118,8 @@ export default function GoogleConnectionsPage() {
 
       <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
         <GoogleIcon size={14} />
-        Hookline only requests the youtube.upload scope. Quota is governed per API key.
+        Hookline requests the youtube.upload + youtube.force-ssl scopes on the connected account; YouTube
+        Data API quota is governed per Google project.
       </p>
     </div>
   );

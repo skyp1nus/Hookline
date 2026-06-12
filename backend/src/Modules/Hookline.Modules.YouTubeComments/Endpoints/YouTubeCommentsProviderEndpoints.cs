@@ -21,6 +21,9 @@ namespace Hookline.Modules.YouTubeComments.Endpoints;
 public static class YouTubeCommentsProviderEndpoints
 {
     private const string SlackStateCookie = "ytc_slack_oauth_state";
+    // chat:write = post cards; channels:read + groups:read = list + target public channels AND private
+    // channels (groups) — same visibility as YouTube Uploads; team:read = workspace name. These must ALSO
+    // be configured in the Comments Slack app's Bot Token Scopes in the Slack console, then re-installed.
     private const string InstallScopes = "chat:write,channels:read,groups:read,team:read";
 
     public static void MapYouTubeCommentsProviderEndpoints(this IEndpointRouteBuilder app)

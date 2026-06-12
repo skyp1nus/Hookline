@@ -9,8 +9,8 @@ namespace Hookline.Modules.YouTubeComments.Tests;
 
 /// <summary>
 /// The comments slice of the System Danger Zone. Pause-all flips every active mapping to paused AND tears
-/// down its per-mapping recurring jobs; reset wipes the operational state (dedup ledger / retry queue /
-/// quota), advances every mapping's watermark and purges the module's Redis namespace, while the mappings
+/// down its per-mapping recurring jobs; reset wipes the operational state (dedup ledger / retry queue),
+/// advances every mapping's watermark and purges the module's Redis namespace, while the mappings
 /// themselves survive.
 /// </summary>
 public sealed class CommentsMaintenanceTests
@@ -86,7 +86,6 @@ public sealed class CommentsMaintenanceTests
         db.ChannelMappings.Add(mapping);
         db.ProcessedComments.Add(new ProcessedComment { MappingId = mapping.Id, CommentId = "c1", VideoId = "v1", ProcessedAt = DateTimeOffset.UtcNow });
         db.PendingDeliveries.Add(new PendingDelivery { MappingId = mapping.Id, CommentId = "c1", VideoId = "v1", PayloadJson = "{}", NextAttemptAt = DateTimeOffset.UtcNow });
-        db.QuotaUsages.Add(new QuotaUsage { ApiKeyId = Guid.NewGuid(), UsageDate = new DateOnly(2026, 6, 11), UnitsUsed = 5 });
         await db.SaveChangesAsync();
 
         var cache = new RecordingCachePurge();
@@ -97,7 +96,6 @@ public sealed class CommentsMaintenanceTests
 
         Assert.Empty(db.ProcessedComments);
         Assert.Empty(db.PendingDeliveries);
-        Assert.Empty(db.QuotaUsages);
 
         var kept = Assert.Single(db.ChannelMappings); // mapping (routing) survives
         Assert.True(kept.CommentsSinceUtc > oldWatermark); // watermark advanced so old comments can't replay
@@ -106,6 +104,6 @@ public sealed class CommentsMaintenanceTests
 
         Assert.Contains("ytc:", cache.Prefixes);
         Assert.Contains(audit.Entries, e => e.Category == "maintenance.reset");
-        Assert.Equal(3, result.Affected); // 1 processed + 1 pending + 1 quota
+        Assert.Equal(2, result.Affected); // 1 processed + 1 pending
     }
 }

@@ -93,9 +93,17 @@ public sealed class MappingService(
             .Select(c => new { c.Id, c.Name, c.WorkspaceId, c.IsPrivate })
             .ToListAsync(ct);
 
-        var names = await WorkspaceNamesAsync(ct);
+        // Offer only channels whose workspace is still CONNECTED to THIS module's Slack app (active). A
+        // disconnect soft-deactivates the workspace and intentionally keeps its cached slack_channels for a
+        // reconnect (the mapping↔channel FK is OnDelete:Cascade, so purging the cache would delete the
+        // deactivated mappings). The app filter also stops the YouTube Uploads app's workspace (a separate
+        // row in the shared store) from leaking its channels into the Comments picker.
+        var activeNames = (await slackConnections.ListAsync(ct))
+            .Where(w => w.IsActive && w.App == SlackChannelService.AppKey)
+            .ToDictionary(w => w.Id, w => w.TeamName);
         var slackChannels = slackRows
-            .Select(c => new SlackChannelOption(c.Id, c.Name, names.GetValueOrDefault(c.WorkspaceId, "—"), c.IsPrivate))
+            .Where(c => activeNames.ContainsKey(c.WorkspaceId))
+            .Select(c => new SlackChannelOption(c.Id, c.Name, activeNames[c.WorkspaceId], c.IsPrivate))
             .ToList();
 
         return new MappingOptionsDto(youtubeChannels, slackChannels);

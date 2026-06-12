@@ -19,10 +19,12 @@ namespace Hookline.Modules.YouTubeComments;
 
 /// <summary>
 /// The "YouTube Comments" tool. Per-mapping polling → commentThreads.list → exactly-once via
-/// processed_comments → Block Kit → Slack, with a deep reply sweep, durable delivery retry, and
-/// multiple API keys rotated by remaining Pacific-day quota. Slack workspaces + YouTube API keys come
-/// from the shared Connections subsystem; jobs run via the shared scheduler under the system principal
-/// writing the shared audit trail. Comment polling uses API KEYS (not OAuth) — correct for monitoring.
+/// processed_comments → Block Kit → Slack, with a deep reply sweep and durable delivery retry. Monitoring
+/// is OAuth-only: it resolves a force-ssl access credential for the channel's owning Google account via
+/// the shared <see cref="IGoogleChannelCredentials"/> contract — the SAME credential that powers the
+/// "Reject on YouTube" button, so monitoring and moderation are gated alike. Slack workspaces + Google
+/// accounts come from the shared Connections subsystem; jobs run via the shared scheduler under the
+/// system principal writing the shared audit trail.
 /// </summary>
 public sealed class YouTubeCommentsModule : IModule
 {
@@ -31,8 +33,7 @@ public sealed class YouTubeCommentsModule : IModule
     public IEnumerable<ConnectionRequirement> RequiredConnections =>
     [
         new(ConnectionType.Slack, Required: true, Note: "Workspace bot token for the mapped channels."),
-        new(ConnectionType.YouTubeApiKey, Required: true, Note: "Quota-rotated keys for comment polling."),
-        new(ConnectionType.Google, Required: false, Note: "Optional: a force-ssl account enables 'Reject on YouTube' from Slack."),
+        new(ConnectionType.Google, Required: true, Note: "A force-ssl account owns each monitored channel — enables both comment monitoring and 'Reject on YouTube'."),
     ];
 
     public void RegisterServices(IServiceCollection services, IConfiguration config)
@@ -55,21 +56,20 @@ public sealed class YouTubeCommentsModule : IModule
         // Typed Slack HTTP client (per-call bot token).
         services.AddHttpClient<ISlackClient, SlackClient>();
 
-        // Stateless YouTube client (builds a YouTubeService per call from the leased API key).
+        // Stateless YouTube read client (builds a YouTubeService per call from the OAuth access token).
         services.AddSingleton<IYouTubeClient, YouTubeClient>();
 
         // Slack interactivity (the "Reject on YouTube" button): signature verifier + the OAuth-authorized
         // moderation write client. IGoogleChannelCredentials (the access-token provider) is implemented by
-        // the Uploads module; CommentModerationService consumes it optionally and degrades honestly if absent.
+        // the Uploads module; both monitoring (the polling jobs) and CommentModerationService consume it
+        // optionally via IEnumerable<> and degrade to an honest gated state if absent.
         services.AddSingleton<SlackSignatureVerifier>();
         services.AddSingleton<IYouTubeModerationClient, YouTubeModerationClient>();
         services.AddScoped<CommentModerationService>();
 
         // Scoped services (touch the DbContext / shared accessors).
         services.AddScoped<ICommentsAudit, CommentsAudit>();
-        services.AddScoped<IYouTubeApiKeyProvider, YouTubeApiKeyProvider>();
         services.AddScoped<IPollingScheduler, HangfirePollingScheduler>();
-        services.AddScoped<ApiKeyService>();
         services.AddScoped<ChannelService>();
         services.AddScoped<SlackChannelService>();
         services.AddScoped<MappingService>();
@@ -81,9 +81,8 @@ public sealed class YouTubeCommentsModule : IModule
         services.AddScoped<DeliveryRetryJob>();
         services.AddScoped<CleanupJob>();
 
-        // React to shared Connections disconnects (deactivate mappings / prune quota) — guide §5.
+        // React to a shared Slack-workspace disconnect (deactivate its mappings + tear down jobs) — guide §5.
         services.AddScoped<IIntegrationEventHandler<SlackWorkspaceDisconnected>, SlackWorkspaceDisconnectedHandler>();
-        services.AddScoped<IIntegrationEventHandler<YouTubeApiKeyDisconnected>, YouTubeApiKeyDisconnectedHandler>();
 
         // System "Danger Zone" fan-out (pause-all / reset) — host resolves it via the shared contract.
         services.AddScoped<IMaintenanceControl, CommentsMaintenanceControl>();

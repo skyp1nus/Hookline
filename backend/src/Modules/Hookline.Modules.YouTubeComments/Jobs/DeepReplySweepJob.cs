@@ -24,17 +24,19 @@ public sealed class DeepReplySweepJob(
     YouTubeCommentsDbContext db,
     IYouTubeClient youtube,
     ISlackClient slack,
-    IYouTubeApiKeyProvider keys,
+    IEnumerable<IGoogleChannelCredentials> channelCredentialProviders,
     IPollingScheduler scheduler,
     ISlackConnections slackConnections,
-    CommentModerationService moderation,
     ICommentsAudit audit,
     ILogger<DeepReplySweepJob> logger)
 {
     // Page caps bound the worst-case quota a single sweep can spend.
     private const int MaxScanPages = 30;   // up to ~3000 threads scanned per sweep
     private const int MaxReplyPages = 10;  // up to ~1000 replies fetched per popular comment
-    private const int ScanBudget = MaxScanPages;
+
+    // The shared force-ssl credential contract is implemented by the Uploads module; consumed
+    // optionally so a build without Uploads degrades to an honest "monitoring unavailable" state.
+    private readonly IGoogleChannelCredentials? _channelCredentials = channelCredentialProviders.FirstOrDefault();
 
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMinutes(1);
 
@@ -69,10 +71,18 @@ public sealed class DeepReplySweepJob(
             return;
         }
 
-        var lease = await keys.AcquireAsync(ScanBudget, ct);
-        if (lease is null)
+        // Resolve the channel owner's force-ssl OAuth access token (same credential the poll + Reject use).
+        // No credential = honest gated state; the normal poll already stamps LastError, so just skip here.
+        if (_channelCredentials is null)
         {
-            await audit.LogAsync(AuditLevel.Warning, "ReplySweep", "No API key with available quota", "ChannelMapping", mappingId.ToString(), ct: ct);
+            await audit.LogAsync(AuditLevel.Warning, "ReplySweep", "Comment monitoring is unavailable — the Google credentials provider is not loaded.", "ChannelMapping", mappingId.ToString(), ct: ct);
+            return;
+        }
+
+        var credential = await _channelCredentials.GetChannelCredentialAsync(ytChannel.YouTubeChannelId, ct);
+        if (credential is null)
+        {
+            await audit.LogAsync(AuditLevel.Warning, "ReplySweep", "No Google account connected for this channel — connect or re-consent it in Connections → Google to enable monitoring.", "ChannelMapping", mappingId.ToString(), ct: ct);
             return;
         }
 
@@ -83,14 +93,11 @@ public sealed class DeepReplySweepJob(
             // Never look back past the mapping's watermark.
             var since = windowStart > mapping.CommentsSinceUtc ? windowStart : mapping.CommentsSinceUtc;
 
-            var fetch = await youtube.GetCommentThreadsSinceAsync(lease.ApiKey, ytChannel.YouTubeChannelId, since, MaxScanPages, ct);
+            var fetch = await youtube.GetCommentThreadsSinceAsync(credential.AccessToken, ytChannel.YouTubeChannelId, since, MaxScanPages, ct);
             var unitsUsed = fetch.UnitsUsed;
 
             if (fetch.Threads.Count == 0)
-            {
-                await keys.RecordUsageAsync(lease.Id, unitsUsed, ct);
                 return;
-            }
 
             var parentIds = fetch.Threads.Select(t => t.TopLevel.CommentId).ToList();
 
@@ -122,7 +129,7 @@ public sealed class DeepReplySweepJob(
                 var known = postedCountByParent.GetValueOrDefault(parent);
                 if (thread.TotalReplyCount > thread.InlineReplies.Count && thread.TotalReplyCount > known)
                 {
-                    var deep = await youtube.GetRepliesAsync(lease.ApiKey, parent, thread.TopLevel.VideoId, MaxReplyPages, ct);
+                    var deep = await youtube.GetRepliesAsync(credential.AccessToken, parent, thread.TopLevel.VideoId, MaxReplyPages, ct);
                     unitsUsed += deep.UnitsUsed;
                     replies = deep.Replies;
                 }
@@ -141,7 +148,7 @@ public sealed class DeepReplySweepJob(
             if (toPost.Count > 0)
             {
                 var titles = await youtube.GetVideoTitlesAsync(
-                    lease.ApiKey, toPost.Select(r => r.VideoId).Where(v => !string.IsNullOrEmpty(v)), ct);
+                    credential.AccessToken, toPost.Select(r => r.VideoId).Where(v => !string.IsNullOrEmpty(v)), ct);
                 unitsUsed += titles.UnitsUsed;
 
                 // Parent → Slack ts, so replies thread under the original comment's message.
@@ -153,9 +160,9 @@ public sealed class DeepReplySweepJob(
                         .ToListAsync(ct))
                     .ToDictionary(x => x.CommentId, x => x.SlackMessageTs!, StringComparer.Ordinal);
 
-                // Force-ssl capability for the owning channel — gates the Reject button vs. the proactive
-                // re-consent link. Resolved once per sweep, not per reply.
-                var canModerate = await moderation.CanModerateAsync(ytChannel.YouTubeChannelId, ct);
+                // We hold a force-ssl credential for this channel (resolved above), so the Reject button
+                // can act — read and moderate share the one credential (consistent gating by construction).
+                const bool canModerate = true;
 
                 foreach (var reply in toPost.OrderBy(r => r.PublishedAt))
                 {
@@ -201,7 +208,8 @@ public sealed class DeepReplySweepJob(
                 }
             }
 
-            await keys.RecordUsageAsync(lease.Id, unitsUsed, ct);
+            // unitsUsed is reported in the audit detail as telemetry; with a single OAuth project there
+            // is no per-key quota ledger to write (see the dashboard estimate).
             if (channelGone)
             {
                 mapping.IsActive = false;
@@ -228,24 +236,21 @@ public sealed class DeepReplySweepJob(
         }
         catch (GoogleApiException ex) when (ex.HasReason("quotaExceeded"))
         {
-            await keys.MarkExhaustedAsync(lease.Id, ct);
+            // Single OAuth project out of quota — no key to rotate; the next scheduled sweep retries
+            // after the Pacific-day rollover.
             await audit.LogAsync(AuditLevel.Warning, "Quota",
-                $"Quota exhausted on key '{lease.Name}' during reply sweep", "ChannelMapping", mappingId.ToString(), ct: ct);
+                "YouTube quota for the connected account is exhausted during reply sweep", "ChannelMapping", mappingId.ToString(), ct: ct);
             logger.LogWarning(ex, "Quota exceeded during reply sweep {MappingId}", mappingId);
         }
-        catch (GoogleApiException ex) when (ex.IsKeyInvalid())
+        catch (GoogleApiException ex) when ((int)ex.HttpStatusCode == 401)
         {
-            // Dead key — disable it so it leaves the rotation pool; the next tick rotates to another key.
-            await keys.MarkInvalidAsync(lease.Id, ct);
-            var reason = ex.Error?.Errors?.FirstOrDefault()?.Reason ?? "invalid";
-            await audit.LogAsync(AuditLevel.Warning, "ApiKey",
-                $"API key '{lease.Name}' disabled — YouTube rejected it ({reason})",
+            await audit.LogAsync(AuditLevel.Warning, "ReplySweep",
+                "Google authorization failed — re-connect the account in Connections → Google to resume monitoring",
                 "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);
-            logger.LogWarning(ex, "API key {Key} disabled during reply sweep {MappingId}: {Reason}", lease.Name, mappingId, reason);
+            logger.LogWarning(ex, "OAuth unauthorized during reply sweep {MappingId}", mappingId);
         }
         catch (GoogleApiException ex) when (ex.HasReason("commentsDisabled") || (int)ex.HttpStatusCode == 403)
         {
-            await keys.RecordUsageAsync(lease.Id, 1, ct);
             await audit.LogAsync(AuditLevel.Warning, "ReplySweep",
                 "Comments unavailable for this channel (disabled or forbidden)",
                 "ChannelMapping", mappingId.ToString(), details: ex.Message, ct: ct);

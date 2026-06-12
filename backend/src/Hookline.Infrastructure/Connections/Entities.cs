@@ -1,9 +1,13 @@
 namespace Hookline.Infrastructure.Connections;
 
-/// <summary>A connected Slack workspace (OAuth v2 bot token). Multiple per provider allowed.</summary>
+/// <summary>A connected Slack workspace (OAuth v2 bot token). One row per (team, app): each tool is its
+/// own Slack app, so the same team can be connected once per app with its own bot token.</summary>
 public sealed class SlackWorkspace
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Which Slack app installed this (the owning module key, e.g. <c>youtube-uploads</c>).</summary>
+    public string App { get; set; } = string.Empty;
     public string TeamId { get; set; } = string.Empty;
     public string TeamName { get; set; } = string.Empty;
     public string BotTokenEncrypted { get; set; } = string.Empty;
@@ -26,15 +30,4 @@ public sealed class GoogleAccount
     public string Scopes { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public DateTimeOffset ConnectedAt { get; set; } = DateTimeOffset.UtcNow;
-}
-
-/// <summary>A YouTube Data API key (comment polling). Multiple per provider, quota-rotated.</summary>
-public sealed class YouTubeApiKey
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string Name { get; set; } = string.Empty;
-    public string ApiKeyEncrypted { get; set; } = string.Empty;
-    public string KeyHint { get; set; } = string.Empty;
-    public bool IsActive { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

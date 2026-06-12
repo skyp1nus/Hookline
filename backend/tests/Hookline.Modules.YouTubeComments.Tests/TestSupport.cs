@@ -47,55 +47,15 @@ internal sealed class FakeJobScheduler : IJobScheduler
     public IReadOnlyList<string> ListRecurring() => Recurring.Keys.ToList();
 }
 
-/// <summary>In-memory <see cref="IYouTubeApiKeyConnections"/> backing the rotation provider tests.</summary>
-internal sealed class FakeKeyConnections : IYouTubeApiKeyConnections
-{
-    private readonly List<(YouTubeApiKeySummary Summary, string Key)> _keys = new();
-
-    public Guid Seed(string name, bool active, string key = "AIzaTESTKEYvalue9999")
-    {
-        var id = Guid.NewGuid();
-        _keys.Add((new YouTubeApiKeySummary(id, name, "AIza…9999", active, DateTimeOffset.UtcNow), key));
-        return id;
-    }
-
-    public Task<IReadOnlyList<YouTubeApiKeySummary>> ListAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<YouTubeApiKeySummary>>(_keys.Select(k => k.Summary).ToList());
-
-    public Task<IReadOnlyList<YouTubeApiKeySummary>> ListActiveAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<YouTubeApiKeySummary>>(_keys.Where(k => k.Summary.IsActive).Select(k => k.Summary).ToList());
-
-    public Task<string?> GetApiKeyAsync(Guid keyId, CancellationToken ct = default) =>
-        Task.FromResult(_keys.Where(k => k.Summary.Id == keyId).Select(k => (string?)k.Key).FirstOrDefault());
-
-    public Task<Guid> CreateAsync(string name, string apiKey, string keyHint, CancellationToken ct = default)
-    {
-        var id = Guid.NewGuid();
-        _keys.Add((new YouTubeApiKeySummary(id, name, keyHint, true, DateTimeOffset.UtcNow), apiKey));
-        return Task.FromResult(id);
-    }
-
-    public Task<bool> ToggleAsync(Guid keyId, bool isActive, CancellationToken ct = default)
-    {
-        var i = _keys.FindIndex(k => k.Summary.Id == keyId);
-        if (i < 0) return Task.FromResult(false);
-        _keys[i] = (_keys[i].Summary with { IsActive = isActive }, _keys[i].Key);
-        return Task.FromResult(true);
-    }
-
-    public Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default) =>
-        Task.FromResult(_keys.RemoveAll(k => k.Summary.Id == keyId) > 0);
-}
-
 /// <summary>In-memory <see cref="ISlackConnections"/>; only the bits the module services read are real.</summary>
 internal sealed class FakeSlackConnections : ISlackConnections
 {
     private readonly List<SlackWorkspaceSummary> _workspaces = new();
 
-    public Guid Seed(string teamName, bool active = true)
+    public Guid Seed(string teamName, bool active = true, string app = "youtube-comments")
     {
         var id = Guid.NewGuid();
-        _workspaces.Add(new SlackWorkspaceSummary(id, $"T-{id:N}", teamName, active));
+        _workspaces.Add(new SlackWorkspaceSummary(id, $"T-{id:N}", teamName, app, active));
         return id;
     }
 
@@ -105,14 +65,14 @@ internal sealed class FakeSlackConnections : ISlackConnections
     public Task<string?> GetBotTokenAsync(Guid workspaceId, CancellationToken ct = default) =>
         Task.FromResult<string?>(_workspaces.Any(w => w.Id == workspaceId) ? "xoxb-test" : null);
 
-    public Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) =>
+    public Task<string?> GetBotTokenForTeamAsync(string teamId, string app, CancellationToken ct = default) =>
         Task.FromResult<string?>("xoxb-test");
 
-    public Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default) =>
-        Task.FromResult(_workspaces.FirstOrDefault(w => w.TeamId == teamId));
+    public Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, string app, CancellationToken ct = default) =>
+        Task.FromResult(_workspaces.FirstOrDefault(w => w.TeamId == teamId && w.App == app));
 
     public Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default) =>
-        Task.FromResult(Seed(write.TeamName));
+        Task.FromResult(Seed(write.TeamName, app: write.App));
 
     public Task<bool> DeactivateAsync(Guid workspaceId, CancellationToken ct = default) =>
         Task.FromResult(_workspaces.RemoveAll(w => w.Id == workspaceId) > 0);
@@ -163,7 +123,8 @@ internal sealed class StubAuditLogReader(int errorCount = 0) : IAuditLogReader
 }
 
 /// <summary>In-memory <see cref="IGoogleChannelCredentials"/> — seeds a force-ssl credential per channel
-/// id; unseeded channels resolve to null (the honest "not connected for moderation" path).</summary>
+/// id; unseeded channels resolve to null (the honest "no connected account" path used by both monitoring
+/// and moderation).</summary>
 internal sealed class FakeGoogleChannelCredentials : IGoogleChannelCredentials
 {
     private readonly Dictionary<string, GoogleChannelCredential> _byChannel = new(StringComparer.Ordinal);
@@ -173,7 +134,7 @@ internal sealed class FakeGoogleChannelCredentials : IGoogleChannelCredentials
             Guid.NewGuid(), youtubeChannelId, accessToken, DateTimeOffset.UtcNow.AddHours(1),
             new[] { GoogleScopes.YouTubeForceSsl });
 
-    public Task<GoogleChannelCredential?> GetModerationCredentialAsync(string youtubeChannelId, CancellationToken ct = default) =>
+    public Task<GoogleChannelCredential?> GetChannelCredentialAsync(string youtubeChannelId, CancellationToken ct = default) =>
         Task.FromResult(_byChannel.GetValueOrDefault(youtubeChannelId));
 }
 

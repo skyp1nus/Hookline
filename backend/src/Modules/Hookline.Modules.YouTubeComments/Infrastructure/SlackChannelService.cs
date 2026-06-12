@@ -25,10 +25,15 @@ public sealed class SlackChannelService(
     ICommentsAudit audit,
     ILogger<SlackChannelService> logger)
 {
-    /// <summary>Lists every connected workspace with the number of channels cached for it.</summary>
+    /// <summary>This module's Slack app key — its bot token lives in its OWN row in the shared store,
+    /// separate from the YouTube Uploads app (so a Comments card posts as the Comments bot and its
+    /// "Reject" interactivity routes back to THIS module). The mapping picker reuses it to scope channels.</summary>
+    internal const string AppKey = "youtube-comments";
+
+    /// <summary>Lists this module's connected workspaces with the number of channels cached for each.</summary>
     public async Task<SlackWorkspaceDto[]> ListWorkspacesAsync(CancellationToken ct = default)
     {
-        var workspaces = await slackConnections.ListAsync(ct);
+        var workspaces = (await slackConnections.ListAsync(ct)).Where(w => w.App == AppKey);
         var counts = await db.SlackChannels
             .AsNoTracking()
             .GroupBy(c => c.WorkspaceId)
@@ -50,6 +55,7 @@ public sealed class SlackChannelService(
         var oauth = await slack.ExchangeCodeAsync(code, redirectUri, ct);
 
         var workspaceId = await slackConnections.UpsertWorkspaceAsync(new SlackWorkspaceWrite(
+            App: AppKey,
             TeamId: oauth.TeamId,
             TeamName: oauth.TeamName,
             BotToken: oauth.AccessToken,

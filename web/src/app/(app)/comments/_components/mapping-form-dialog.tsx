@@ -25,7 +25,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { apiErrorMessage } from "@/lib/api/client";
 import {
-  useApiKeys,
+  useAvailableChannels,
   useCreateChannel,
   useCreateMapping,
   useMappingOptions,
@@ -60,15 +60,16 @@ export function MappingFormDialog({
   // Only read the picker options once the on-open Slack refresh settles, so it never shows the stale
   // pre-refresh cache (the shared Connections install doesn't fill this module's channel cache by itself).
   const optionsQuery = useMappingOptions(open && !isEdit && (refreshSlack.isSuccess || refreshSlack.isError));
-  // Channel lookup (the inline add-by-URL field) needs an active YouTube API key; surface that honestly.
-  const apiKeysQuery = useApiKeys(open && !isEdit);
+  // Monitoring is OAuth-only: you can only track channels a connected Google account owns (force-ssl).
+  // The picker lists those; an empty list is the honest "connect Google to enable monitoring" gate.
+  const availableQuery = useAvailableChannels(open && !isEdit);
   const createMapping = useCreateMapping();
   const updateMapping = useUpdateMapping();
   const createChannel = useCreateChannel();
 
   const [youTubeChannelId, setYouTubeChannelId] = useState("");
   const [slackChannelId, setSlackChannelId] = useState("");
-  const [channelInput, setChannelInput] = useState("");
+  const [addChannelId, setAddChannelId] = useState("");
   const [frequency, setFrequency] = useState<PollingFrequency>(15);
   const [includeReplies, setIncludeReplies] = useState(false);
   const [replySweepFrequency, setReplySweepFrequency] = useState<ReplyScanFrequency>(0);
@@ -84,7 +85,7 @@ export function MappingFormDialog({
     } else {
       setYouTubeChannelId("");
       setSlackChannelId("");
-      setChannelInput("");
+      setAddChannelId("");
       setFrequency(15);
       setIncludeReplies(false);
       setReplySweepFrequency(0);
@@ -100,21 +101,22 @@ export function MappingFormDialog({
   const busy = createMapping.isPending || updateMapping.isPending;
   // The picker can't render until the on-open refresh settles and the options query has fetched.
   const loadingOptions = refreshSlack.isPending || optionsQuery.isFetching;
-  // Once keys have loaded, no active key means the inline channel lookup will fail — disable + explain it.
-  const hasApiKey = (apiKeysQuery.data ?? []).some((k) => k.isActive);
-  const noApiKey = apiKeysQuery.isSuccess && !hasApiKey;
+  // The operator's connected channels that can be monitored, and the ones not yet tracked.
+  const available = availableQuery.data ?? [];
+  const addable = available.filter((c) => !c.alreadyTracked);
+  // No connected, comment-capable Google account ⇒ honest gated state (connect Google to enable monitoring).
+  const noConnectedChannels = availableQuery.isSuccess && available.length === 0;
 
-  // Add a tracked channel inline (folded in from the removed Channels page) so a mapping can be created
-  // end-to-end without leaving this dialog. The backend resolves the URL/@handle/id against the YouTube
-  // Data API; on success the options query refetches and we auto-select the freshly added channel.
+  // Track one of the operator's own connected channels inline so a mapping can be created end-to-end
+  // without a separate Channels page. No YouTube lookup — the backend validates it against the connected
+  // accounts. On success the options query refetches and we auto-select the freshly tracked channel.
   async function onAddChannel() {
-    const value = channelInput.trim();
-    if (!value) return;
+    if (!addChannelId) return;
     try {
-      const channel = await createChannel.mutateAsync({ input: value });
-      setChannelInput("");
+      const channel = await createChannel.mutateAsync({ youTubeChannelId: addChannelId });
+      setAddChannelId("");
       setYouTubeChannelId(channel.id);
-      toast.success(`Added ${channel.title}.`);
+      toast.success(`Now tracking ${channel.title}.`);
     } catch (error) {
       toast.error(apiErrorMessage(error));
     }
@@ -203,41 +205,43 @@ export function MappingFormDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="add-channel"
-                    placeholder="Add by URL, @handle, or channel id"
-                    value={channelInput}
-                    onChange={(e) => setChannelInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      // Enter inside the dialog form would submit the mapping; intercept it for the add action.
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        onAddChannel();
-                      }
-                    }}
-                    disabled={createChannel.isPending || noApiKey}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onAddChannel}
-                    disabled={createChannel.isPending || noApiKey || !channelInput.trim()}
-                  >
-                    {createChannel.isPending ? "Adding…" : "Add"}
-                  </Button>
-                </div>
-                {noApiKey ? (
+                {addable.length > 0 && (
+                  <div className="flex gap-1.5">
+                    <Select value={addChannelId} onValueChange={setAddChannelId} disabled={createChannel.isPending}>
+                      <SelectTrigger id="add-channel" className="flex-1">
+                        <SelectValue placeholder="Track one of your channels…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {addable.map((c) => (
+                          <SelectItem key={c.youTubeChannelId} value={c.youTubeChannelId}>
+                            {c.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={onAddChannel}
+                      disabled={createChannel.isPending || !addChannelId}
+                    >
+                      {createChannel.isPending ? "Adding…" : "Add"}
+                    </Button>
+                  </div>
+                )}
+                {noConnectedChannels ? (
                   <p className="text-[11px] text-amber-600 dark:text-amber-500">
-                    Add a YouTube API key in{" "}
-                    <Link href="/connections/keys" className="underline underline-offset-2">
-                      Connections → API keys
+                    No connected YouTube channel can be monitored. Connect a Google account (and grant the
+                    comment-management permission) in{" "}
+                    <Link href="/connections/google" className="underline underline-offset-2">
+                      Connections → Google
                     </Link>{" "}
-                    first — channel lookup needs one.
+                    to enable monitoring.
                   </p>
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
-                    Not tracked yet? Add it here — it&apos;s selected automatically once resolved.
+                    Monitoring runs on the channel owner&apos;s Google account — pick one of your connected
+                    channels. It&apos;s selected automatically once tracked.
                   </p>
                 )}
               </div>

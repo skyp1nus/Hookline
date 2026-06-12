@@ -28,7 +28,7 @@ export interface StatItem {
 
 export interface ActivityItem {
   id: number;
-  kind: "upload" | "comment" | "key";
+  kind: "upload" | "comment";
   text: string;
   meta: string;
   time: string;
@@ -61,17 +61,6 @@ export interface Job {
   videoUrl?: string;
   finishedAgo?: string;
   error?: string;
-}
-
-export interface ApiKey {
-  id: string;
-  name: string;
-  key: string;
-  account: string;
-  used: number;
-  total: number;
-  status: "active" | "disabled";
-  added: string;
 }
 
 export interface CommentMapping {
@@ -189,8 +178,7 @@ export const DATA = {
   activity: [
     { id: 1, kind: "upload", text: "Uploaded “Q2 product walkthrough.mp4” to YouTube", meta: "YouTube Uploads · #content-drops", time: "2m ago", status: "done" },
     { id: 2, kind: "comment", text: "Forwarded 14 new comments from Daniel’s Channel", meta: "YouTube Comments · #yt-comments", time: "6m ago", status: "ok" },
-    { id: 3, kind: "upload", text: "Upload failed — quota exceeded on key “prod-yt-02”", meta: "YouTube Uploads · #content-drops", time: "21m ago", status: "failed" },
-    { id: 4, kind: "key", text: "API key “prod-yt-01” validated successfully", meta: "Connections · YouTube API keys", time: "44m ago", status: "ok" },
+    { id: 3, kind: "upload", text: "Upload failed — YouTube quota exceeded", meta: "YouTube Uploads · #content-drops", time: "21m ago", status: "failed" },
     { id: 5, kind: "comment", text: "Paused mapping “Side Project → #side-comments”", meta: "YouTube Comments · Mappings", time: "1h ago", status: "neutral" },
     { id: 6, kind: "upload", text: "Uploaded “Behind the scenes vlog.mov” as private", meta: "YouTube Uploads · #vlog-uploads", time: "2h ago", status: "done" },
   ] as ActivityItem[],
@@ -198,7 +186,6 @@ export const DATA = {
   health: [
     { id: "slack", label: "Slack workspaces", icon: "slack", ok: 2, total: 2, status: "ok", detail: "All connected" },
     { id: "google", label: "Google / YouTube", icon: "youtube", ok: 3, total: 3, status: "ok", detail: "3 accounts linked" },
-    { id: "keys", label: "YouTube API keys", icon: "key", ok: 3, total: 4, status: "warn", detail: "1 key over 80% quota" },
   ] as HealthItem[],
 
   jobs: [
@@ -209,13 +196,6 @@ export const DATA = {
     { id: "job_4c1d7", title: "Promo cut — spring sale.mov", status: "failed", progress: 41, source: "Drive · promo-spring-sale.mov", sizeMB: 980, target: "Daniel’s Channel", channel: "#content-drops", account: "prod-yt-02", elapsed: 119, eta: null, by: "Maya R.", error: "YouTube API quota exceeded (key prod-yt-02)" },
   ] as Job[],
 
-  apiKeys: [
-    { id: "k1", name: "prod-yt-01", key: "AIzaSyB•••••••••••••••••3kQ", account: "Daniel’s Channel", used: 4120, total: 10000, status: "active", added: "2026-02-14" },
-    { id: "k2", name: "prod-yt-02", key: "AIzaSyD•••••••••••••••••9mP", account: "Daniel’s Channel", used: 8730, total: 10000, status: "active", added: "2026-03-02" },
-    { id: "k3", name: "side-yt-01", key: "AIzaSyA•••••••••••••••••1xR", account: "Side Project Co.", used: 1190, total: 10000, status: "active", added: "2026-04-21" },
-    { id: "k4", name: "backup-yt", key: "AIzaSyC•••••••••••••••••7vN", account: "Daniel’s Channel", used: 0, total: 10000, status: "disabled", added: "2026-01-09" },
-  ] as ApiKey[],
-
   mappings: [
     { id: "m1", channel: "Daniel’s Channel", channelId: "UC_x9k...3Qa", slack: "#yt-comments", freq: "1 min", active: true, fwd24: 312 },
     { id: "m2", channel: "Daniel’s Channel", channelId: "UC_x9k...3Qa", slack: "#yt-superfans", freq: "5 min", active: true, fwd24: 88 },
@@ -224,8 +204,7 @@ export const DATA = {
   ] as CommentMapping[],
 
   needsAttention: [
-    { id: "na1", severity: "danger", icon: "circleX", tool: "YouTube Uploads", title: "“Promo cut — spring sale.mov” failed to upload", detail: "YouTube API quota exceeded on key prod-yt-02 · 21m ago", action: { label: "Retry upload", route: "ytu-queue" } },
-    { id: "na2", severity: "warn", icon: "key", tool: "Connections", title: "API key prod-yt-02 is at 87% of daily quota", detail: "1,270 units left · resets 00:00 PT (in 4h 12m)", action: { label: "Rotate keys", route: "conn-keys" } },
+    { id: "na1", severity: "danger", icon: "circleX", tool: "YouTube Uploads", title: "“Promo cut — spring sale.mov” failed to upload", detail: "YouTube quota exceeded · 21m ago", action: { label: "Retry upload", route: "ytu-queue" } },
     { id: "na3", severity: "warn", icon: "plug", tool: "Connections", title: "Slack OAuth for Side Project Co. expires in 6 days", detail: "Re-authorize to keep #side-comments forwarding", action: { label: "Re-authorize", route: "conn-slack" } },
     { id: "na4", severity: "neutral", icon: "pause", tool: "YouTube Comments", title: "Mapping “Side Project → #side-comments” is paused", detail: "Paused 1h ago by Daniel C. · 0 comments forwarded since", action: { label: "Review mapping", route: "ytc-mappings" } },
   ] as NeedsAttentionItem[],
@@ -233,7 +212,6 @@ export const DATA = {
   metrics: [
     { id: "fwd", label: "Comments forwarded · today", value: "1,284", context: "across 3 channels → 4 Slack channels", icon: "messageSquare", foot: "Last forward 6m ago" },
     { id: "upl", label: "Uploads · today", value: "37", context: "34 done · 2 running · 1 failed", icon: "uploadCloud", foot: "2 workers online", tone: "warn" },
-    { id: "quota", label: "Lowest quota headroom", value: "13%", context: "1,270 / 10,000 units left on prod-yt-02", icon: "key", foot: "Resets 00:00 PT", tone: "warn" },
     { id: "auto", label: "Active automations", value: "11", context: "8 comment mappings · 3 upload routes", icon: "zap", foot: "1 paused" },
   ] as Metric[],
 

@@ -5,7 +5,6 @@ import {
   CircleAlert,
   CircleCheck,
   CloudUpload,
-  Key,
   MessageSquare,
   RefreshCw,
   ScrollText,
@@ -29,7 +28,7 @@ import { ROUTE_PATH, type RouteId } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { useOverview } from "@/features/overview/hooks";
 
-const ACTIVITY_ICON = { upload: CloudUpload, comment: MessageSquare, key: Key };
+const ACTIVITY_ICON = { upload: CloudUpload, comment: MessageSquare };
 
 export default function OverviewPage() {
   const router = useRouter();
@@ -155,7 +154,7 @@ export default function OverviewPage() {
         <Card>
           <CardHeader>
             <CardTitle>Connections health</CardTitle>
-            <CardDescription>Slack · Google · API keys</CardDescription>
+            <CardDescription>Slack · Google</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -170,15 +169,7 @@ export default function OverviewPage() {
                   <div key={h.id} className={cn(i > 0 && "border-t")}>
                     <HealthRow
                       item={h}
-                      onClick={() =>
-                        go(
-                          h.id === "slack"
-                            ? "conn-slack"
-                            : h.id === "google"
-                              ? "conn-google"
-                              : "conn-keys",
-                        )
-                      }
+                      onClick={() => go(h.id === "slack" ? "conn-slack" : "conn-google")}
                     />
                   </div>
                 ))}

@@ -49,26 +49,3 @@ public sealed class SlackWorkspaceDisconnectedHandler(
             @event.WorkspaceId, mappings.Count);
     }
 }
-
-/// <summary>
-/// When a shared YouTube API key is deleted from the pool, prune the module-local <c>quota_usage</c>
-/// rows that tracked its Pacific-day consumption (the key id is a plain value, no cross-schema FK).
-/// Polling keeps working off the remaining keys.
-/// </summary>
-public sealed class YouTubeApiKeyDisconnectedHandler(
-    YouTubeCommentsDbContext db,
-    ICommentsAudit audit,
-    ILogger<YouTubeApiKeyDisconnectedHandler> logger)
-    : IIntegrationEventHandler<YouTubeApiKeyDisconnected>
-{
-    public async Task HandleAsync(YouTubeApiKeyDisconnected @event, CancellationToken ct = default)
-    {
-        var pruned = await db.QuotaUsages
-            .Where(q => q.ApiKeyId == @event.KeyId)
-            .ExecuteDeleteAsync(ct);
-
-        await audit.LogAsync(AuditLevel.Information, "Quota",
-            $"API key disconnected: pruned {pruned} quota row(s)", "YouTubeApiKey", @event.KeyId.ToString(), ct: ct);
-        logger.LogInformation("YouTube API key {Key} disconnected: pruned {Pruned} quota row(s)", @event.KeyId, pruned);
-    }
-}

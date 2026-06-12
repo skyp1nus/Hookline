@@ -9,9 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Hookline.Modules.YouTubeComments.Endpoints;
 
 /// <summary>
-/// The module's app API under <c>/api/youtube-comments</c> (through the BFF): API keys, monitored
-/// YouTube channels, channel→Slack mappings, the Slack workspace/channel reads, and the dashboard
-/// stats + 24h comments timeline. Every route is gated to an authenticated caller (the BFF resolves
+/// The module's app API under <c>/api/youtube-comments</c> (through the BFF): monitored YouTube
+/// channels (picked from the operator's connected Google accounts), channel→Slack mappings, the Slack
+/// workspace/channel reads, and the dashboard stats + 24h comments timeline. Monitoring is OAuth-only —
+/// there is no API-key surface. Every route is gated to an authenticated caller (the BFF resolves
 /// identity behind its admin token).
 /// </summary>
 public static class YouTubeCommentsApiEndpoints
@@ -24,52 +25,28 @@ public static class YouTubeCommentsApiEndpoints
             return user.IsAuthenticated ? await next(ctx) : Results.Unauthorized();
         });
 
-        MapApiKeys(g);
         MapChannels(g);
         MapMappings(g);
         MapSlack(g);
         MapDashboard(g);
     }
 
-    // ── YouTube API keys (add/validate/toggle/delete + per-key quota bars) ──
-    private static void MapApiKeys(RouteGroupBuilder g)
-    {
-        g.MapGet("/keys", async (ApiKeyService keys, CancellationToken ct) =>
-            Results.Ok(await keys.ListAsync(ct)));
-
-        g.MapPost("/keys", async (CreateApiKeyRequest request, ApiKeyService keys, CancellationToken ct) =>
-        {
-            try
-            {
-                return Results.Ok(await keys.CreateAsync(request, ct));
-            }
-            catch (ApiKeyValidationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-        });
-
-        g.MapPatch("/keys/{id:guid}/toggle", async (Guid id, ApiKeyService keys, CancellationToken ct) =>
-        {
-            var dto = await keys.ToggleAsync(id, ct);
-            return dto is null ? Results.NotFound() : Results.Ok(dto);
-        });
-
-        g.MapDelete("/keys/{id:guid}", async (Guid id, ApiKeyService keys, CancellationToken ct) =>
-            await keys.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
-    }
-
-    // ── monitored YouTube channels (by URL / @handle / id) ──
+    // ── monitored YouTube channels (picked from the operator's connected, comment-capable Google accounts) ──
     private static void MapChannels(RouteGroupBuilder g)
     {
         g.MapGet("/youtube/channels", async (ChannelService channels, CancellationToken ct) =>
             Results.Ok(await channels.ListAsync(ct)));
 
+        // The operator's own channels that CAN be monitored (connected Google account + force-ssl scope).
+        // Empty = the honest "connect Google to enable monitoring" gated state for the add-channel picker.
+        g.MapGet("/youtube/channels/available", async (ChannelService channels, CancellationToken ct) =>
+            Results.Ok(await channels.ListAvailableAsync(ct)));
+
         g.MapPost("/youtube/channels", async (AddChannelRequest request, ChannelService channels, CancellationToken ct) =>
         {
             try
             {
-                return Results.Ok(await channels.AddAsync(request.Input, ct));
+                return Results.Ok(await channels.AddAsync(request.YouTubeChannelId, ct));
             }
             catch (ChannelResolutionException ex)
             {

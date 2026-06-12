@@ -14,30 +14,33 @@ public sealed class SlackConnections(ConnectionsDbContext db, IEventBus events) 
             .Select(w => w.BotTokenEncrypted)
             .FirstOrDefaultAsync(ct);
 
-    public async Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) =>
+    public async Task<string?> GetBotTokenForTeamAsync(string teamId, string app, CancellationToken ct = default) =>
         await db.SlackWorkspaces.AsNoTracking()
-            .Where(w => w.TeamId == teamId && w.IsActive)
+            .Where(w => w.TeamId == teamId && w.App == app && w.IsActive)
             .Select(w => w.BotTokenEncrypted)
             .FirstOrDefaultAsync(ct);
 
     public async Task<IReadOnlyList<SlackWorkspaceSummary>> ListAsync(CancellationToken ct = default) =>
         await db.SlackWorkspaces.AsNoTracking()
             .OrderBy(w => w.TeamName)
-            .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.IsActive))
+            .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.App, w.IsActive))
             .ToListAsync(ct);
 
-    public async Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default) =>
+    public async Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, string app, CancellationToken ct = default) =>
         await db.SlackWorkspaces.AsNoTracking()
-            .Where(w => w.TeamId == teamId)
-            .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.IsActive))
+            .Where(w => w.TeamId == teamId && w.App == app)
+            .Select(w => new SlackWorkspaceSummary(w.Id, w.TeamId, w.TeamName, w.App, w.IsActive))
             .FirstOrDefaultAsync(ct);
 
     public async Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default)
     {
-        var existing = await db.SlackWorkspaces.FirstOrDefaultAsync(w => w.TeamId == write.TeamId, ct);
+        // Find-or-create by (team, app): two Slack apps installed into the same team keep distinct rows +
+        // bot tokens (was keyed on team_id alone — the second install overwrote the first's token).
+        var existing = await db.SlackWorkspaces.FirstOrDefaultAsync(
+            w => w.TeamId == write.TeamId && w.App == write.App, ct);
         if (existing is null)
         {
-            existing = new SlackWorkspace { TeamId = write.TeamId, InstalledAt = DateTimeOffset.UtcNow };
+            existing = new SlackWorkspace { App = write.App, TeamId = write.TeamId, InstalledAt = DateTimeOffset.UtcNow };
             db.SlackWorkspaces.Add(existing);
         }
 
@@ -149,71 +152,6 @@ public sealed class GoogleConnections(ConnectionsDbContext db, IEventBus events)
     }
 }
 
-/// <summary>Reads/writes YouTube Data API keys (encrypted by the converter) for quota-rotated polling.</summary>
-public sealed class YouTubeApiKeyConnections(ConnectionsDbContext db, IEventBus events) : IYouTubeApiKeyConnections
-{
-    public async Task<IReadOnlyList<YouTubeApiKeySummary>> ListAsync(CancellationToken ct = default) =>
-        await db.YouTubeApiKeys.AsNoTracking()
-            .OrderBy(k => k.CreatedAt)
-            .Select(k => new YouTubeApiKeySummary(k.Id, k.Name, k.KeyHint, k.IsActive, k.CreatedAt))
-            .ToListAsync(ct);
-
-    public async Task<IReadOnlyList<YouTubeApiKeySummary>> ListActiveAsync(CancellationToken ct = default) =>
-        await db.YouTubeApiKeys.AsNoTracking()
-            .Where(k => k.IsActive)
-            .OrderBy(k => k.CreatedAt)
-            .Select(k => new YouTubeApiKeySummary(k.Id, k.Name, k.KeyHint, k.IsActive, k.CreatedAt))
-            .ToListAsync(ct);
-
-    public async Task<string?> GetApiKeyAsync(Guid keyId, CancellationToken ct = default) =>
-        await db.YouTubeApiKeys.AsNoTracking()
-            .Where(k => k.Id == keyId)
-            .Select(k => k.ApiKeyEncrypted) // decrypted on read by the converter
-            .FirstOrDefaultAsync(ct);
-
-    public async Task<Guid> CreateAsync(string name, string apiKey, string keyHint, CancellationToken ct = default)
-    {
-        var key = new YouTubeApiKey
-        {
-            Name = name,
-            ApiKeyEncrypted = apiKey, // encrypted on write by the converter
-            KeyHint = keyHint,
-            IsActive = true,
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        db.YouTubeApiKeys.Add(key);
-        await db.SaveChangesAsync(ct);
-        return key.Id;
-    }
-
-    public async Task<bool> ToggleAsync(Guid keyId, bool isActive, CancellationToken ct = default)
-    {
-        var key = await db.YouTubeApiKeys.FirstOrDefaultAsync(k => k.Id == keyId, ct);
-        if (key is null)
-        {
-            return false;
-        }
-
-        key.IsActive = isActive;
-        await db.SaveChangesAsync(ct);
-        return true;
-    }
-
-    public async Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default)
-    {
-        var key = await db.YouTubeApiKeys.FirstOrDefaultAsync(k => k.Id == keyId, ct);
-        if (key is null)
-        {
-            return false;
-        }
-
-        db.YouTubeApiKeys.Remove(key);
-        await db.SaveChangesAsync(ct);
-        await events.PublishAsync(new YouTubeApiKeyDisconnected(keyId), ct);
-        return true;
-    }
-}
-
 /// <summary>Aggregates every connection into a unified catalog for the UI.</summary>
 public sealed class ConnectionCatalog(ConnectionsDbContext db) : IConnectionCatalog
 {
@@ -238,15 +176,6 @@ public sealed class ConnectionCatalog(ConnectionsDbContext db) : IConnectionCata
                 .Select(g => new ConnectionSummary(
                     g.Id, ConnectionType.Google, g.ChannelTitle,
                     g.IsActive ? "connected" : "disabled", g.ChannelId))
-                .ToListAsync(ct));
-        }
-
-        if (type is null or ConnectionType.YouTubeApiKey)
-        {
-            result.AddRange(await db.YouTubeApiKeys.AsNoTracking()
-                .Select(k => new ConnectionSummary(
-                    k.Id, ConnectionType.YouTubeApiKey, k.Name,
-                    k.IsActive ? "active" : "disabled", k.KeyHint))
                 .ToListAsync(ct));
         }
 

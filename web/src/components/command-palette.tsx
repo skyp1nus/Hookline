@@ -33,7 +33,7 @@ export function CommandPalette({
   const { platform } = usePlatform();
 
   const items = buildCommandItems(platform);
-  const actions = buildCommandActions(platform);
+  const actions = buildCommandActions();
 
   const run = (entry: CommandEntry) => {
     onOpenChange(false);
