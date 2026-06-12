@@ -89,7 +89,7 @@ export default function GoogleConnectionsPage() {
                 iconClassName="text-[#FF0033]"
                 onDisconnect={(id) => disconnect.mutateAsync(id)}
                 disconnectTitle="Disconnect account?"
-                disconnectDescription={`Disconnect ${acct.name}? Remove any upload mapping that targets it first, or the backend will refuse.`}
+                disconnectDescription={`Disconnect ${acct.name}? Any upload mapping that targets it is removed too.`}
               />
             ))}
             {connectHref ? (

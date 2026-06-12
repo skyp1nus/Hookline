@@ -115,7 +115,7 @@ export function useDisconnectWorkspace() {
   });
 }
 
-/** Disconnect a Google account. Backend returns 409 `account_mapped` if a mapping still uses it. */
+/** Disconnect a Google account. The backend cascades: any channel mapping targeting it is dropped too. */
 export function useDisconnectAccount() {
   const qc = useQueryClient();
   return useMutation({
