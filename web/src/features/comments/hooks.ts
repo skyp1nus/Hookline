@@ -65,10 +65,23 @@ export function useMappingOptions(enabled = true) {
 }
 
 /** Stored YouTube Data API keys with today's quota usage. */
-export function useApiKeys() {
+export function useApiKeys(enabled = true) {
   return useQuery({
     queryKey: ["comments", "keys"],
     queryFn: () => api.get<ApiKeyDto[]>("/youtube-comments/keys"),
+    enabled,
+  });
+}
+
+/**
+ * Re-sync the Slack channel caches for all active workspaces. The mapping picker reads a module-local cache
+ * that is otherwise only filled on the module's own Slack OAuth connect — but Slack is connected through the
+ * shared Connections area, which never touches it. The Add-mapping dialog fires this on open; the options
+ * query reads the freshened cache once this settles. Best-effort on the backend.
+ */
+export function useRefreshSlackChannels() {
+  return useMutation({
+    mutationFn: () => api.post("/youtube-comments/slack/refresh-channels"),
   });
 }
 

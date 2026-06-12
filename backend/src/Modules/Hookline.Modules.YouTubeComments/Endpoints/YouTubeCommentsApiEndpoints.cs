@@ -132,6 +132,11 @@ public static class YouTubeCommentsApiEndpoints
             return channels is null ? Results.NotFound() : Results.Ok(channels);
         });
 
+        // Freshen every active workspace's channel cache on demand (the Add-mapping dialog calls this on open so
+        // a shared-Connections Slack install fills this module's picker). The /mappings/options GET stays a pure read.
+        g.MapPost("/slack/refresh-channels", async (SlackChannelService slack, CancellationToken ct) =>
+            Results.Ok(await slack.RefreshAllChannelsAsync(ct)));
+
         g.MapDelete("/slack/workspaces/{id:guid}", async (Guid id, SlackChannelService slack, CancellationToken ct) =>
             await slack.DeleteWorkspaceAsync(id, ct) ? Results.NoContent() : Results.NotFound());
     }

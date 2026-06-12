@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -24,9 +25,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { apiErrorMessage } from "@/lib/api/client";
 import {
+  useApiKeys,
   useCreateChannel,
   useCreateMapping,
   useMappingOptions,
+  useRefreshSlackChannels,
   useUpdateMapping,
 } from "@/features/comments/hooks";
 import {
@@ -53,7 +56,12 @@ export function MappingFormDialog({
   mapping?: MappingDto;
 }) {
   const isEdit = Boolean(mapping);
-  const optionsQuery = useMappingOptions(open && !isEdit);
+  const refreshSlack = useRefreshSlackChannels();
+  // Only read the picker options once the on-open Slack refresh settles, so it never shows the stale
+  // pre-refresh cache (the shared Connections install doesn't fill this module's channel cache by itself).
+  const optionsQuery = useMappingOptions(open && !isEdit && (refreshSlack.isSuccess || refreshSlack.isError));
+  // Channel lookup (the inline add-by-URL field) needs an active YouTube API key; surface that honestly.
+  const apiKeysQuery = useApiKeys(open && !isEdit);
   const createMapping = useCreateMapping();
   const updateMapping = useUpdateMapping();
   const createChannel = useCreateChannel();
@@ -81,10 +89,20 @@ export function MappingFormDialog({
       setIncludeReplies(false);
       setReplySweepFrequency(0);
       setReplyWindowDays(30);
+      // Sync every active workspace's channels before loading the picker; `reset` re-arms it on each reopen.
+      refreshSlack.reset();
+      refreshSlack.mutate();
     }
+    // `refreshSlack` is a stable react-query handle — re-run only when the dialog (re)opens or the mode flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mapping]);
 
   const busy = createMapping.isPending || updateMapping.isPending;
+  // The picker can't render until the on-open refresh settles and the options query has fetched.
+  const loadingOptions = refreshSlack.isPending || optionsQuery.isFetching;
+  // Once keys have loaded, no active key means the inline channel lookup will fail — disable + explain it.
+  const hasApiKey = (apiKeysQuery.data ?? []).some((k) => k.isActive);
+  const noApiKey = apiKeysQuery.isSuccess && !hasApiKey;
 
   // Add a tracked channel inline (folded in from the removed Channels page) so a mapping can be created
   // end-to-end without leaving this dialog. The backend resolves the URL/@handle/id against the YouTube
@@ -165,9 +183,17 @@ export function MappingFormDialog({
             <>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="yt-channel">YouTube channel</Label>
-                <Select value={youTubeChannelId} onValueChange={setYouTubeChannelId}>
+                <Select value={youTubeChannelId} onValueChange={setYouTubeChannelId} disabled={loadingOptions}>
                   <SelectTrigger id="yt-channel">
-                    <SelectValue placeholder={channels.length ? "Select a channel…" : "No channels yet — add one below"} />
+                    <SelectValue
+                      placeholder={
+                        loadingOptions
+                          ? "Loading channels…"
+                          : channels.length
+                            ? "Select a channel…"
+                            : "No channels yet — add one below"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {channels.map((c) => (
@@ -190,27 +216,45 @@ export function MappingFormDialog({
                         onAddChannel();
                       }
                     }}
-                    disabled={createChannel.isPending}
+                    disabled={createChannel.isPending || noApiKey}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     onClick={onAddChannel}
-                    disabled={createChannel.isPending || !channelInput.trim()}
+                    disabled={createChannel.isPending || noApiKey || !channelInput.trim()}
                   >
                     {createChannel.isPending ? "Adding…" : "Add"}
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Not tracked yet? Add it here — it&apos;s selected automatically once resolved.
-                </p>
+                {noApiKey ? (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                    Add a YouTube API key in{" "}
+                    <Link href="/connections/keys" className="underline underline-offset-2">
+                      Connections → API keys
+                    </Link>{" "}
+                    first — channel lookup needs one.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Not tracked yet? Add it here — it&apos;s selected automatically once resolved.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="slack-channel">Slack channel</Label>
-                <Select value={slackChannelId} onValueChange={setSlackChannelId}>
+                <Select value={slackChannelId} onValueChange={setSlackChannelId} disabled={loadingOptions}>
                   <SelectTrigger id="slack-channel">
-                    <SelectValue placeholder={slackChannels.length ? "Select a channel…" : "No channels — connect Slack first"} />
+                    <SelectValue
+                      placeholder={
+                        loadingOptions
+                          ? "Refreshing channels…"
+                          : slackChannels.length
+                            ? "Select a channel…"
+                            : "No channels — connect Slack first"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {slackChannels.map((c) => (
@@ -220,6 +264,15 @@ export function MappingFormDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                {!loadingOptions && slackChannels.length === 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                    No Slack channels found. Connect a workspace in{" "}
+                    <Link href="/connections/slack" className="underline underline-offset-2">
+                      Connections → Slack
+                    </Link>{" "}
+                    (and invite the bot to a channel), then reopen.
+                  </p>
+                )}
               </div>
             </>
           )}
