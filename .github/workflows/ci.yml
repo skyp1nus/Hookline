@@ -56,7 +56,7 @@ jobs:
   docker:
     name: Docker images (build + push to GHCR)
     needs: [backend, frontend]
-    if: false   # ← DEPLOY GATE: flip to `github.ref == 'refs/heads/main'` to enable
+    if: github.ref == 'refs/heads/main'   # ← DEPLOY GATE: enabled for main
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,8 +76,8 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/backend:latest
-            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+            ghcr.io/skyp1nus/hookline/backend:latest
+            ghcr.io/skyp1nus/hookline/backend:${{ github.sha }}
       - name: Build & push frontend
         uses: docker/build-push-action@v6
         with:
@@ -89,10 +89,10 @@ jobs:
           # ${NEXT_PUBLIC_BACKEND_URL}/{provider}/.../oauth/start). It MUST be the public
           # origin, baked here — a runtime env cannot override an inlined value.
           build-args: |
-            NEXT_PUBLIC_BACKEND_URL=https://danielhub.dev
+            NEXT_PUBLIC_BACKEND_URL=https://hookline.danielhub.dev
           tags: |
-            ghcr.io/${{ github.repository }}/frontend:latest
-            ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+            ghcr.io/skyp1nus/hookline/frontend:latest
+            ghcr.io/skyp1nus/hookline/frontend:${{ github.sha }}
 
   deploy:
     name: Deploy (scp compose + Caddy snippet, pull, up -d, reload Caddy)
