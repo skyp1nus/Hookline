@@ -101,6 +101,9 @@ jobs:
     # Its own guard keeps deploy to main even after the docker gate is enabled.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read   # GITHUB_TOKEN can then pull this repo's private GHCR images on the server
     steps:
       - uses: actions/checkout@v4
       - name: Copy compose + Caddy site block to server
@@ -120,6 +123,9 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
+            # Authenticate to GHCR for the private image pull. GITHUB_TOKEN is valid for the
+            # duration of this workflow and carries packages:read for this repo's packages.
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/hookline
             export IMAGE_TAG="${{ github.sha }}"
             docker compose -f docker-compose.prod.yml pull
@@ -128,3 +134,4 @@ jobs:
             install -D -m 644 Caddyfile /opt/shared/sites/hookline.caddy
             docker exec shared-caddy-1 caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f
+            docker logout ghcr.io
