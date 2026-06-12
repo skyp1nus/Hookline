@@ -10,10 +10,12 @@ public static class GoogleScopes
 }
 
 /// <summary>
-/// A short-lived, moderation-capable (<c>youtube.force-ssl</c>) access credential for the Google
-/// account that OWNS a given YouTube channel. Handed to a caller that performs the actual YouTube call
-/// itself — this is an Access primitive (token + expiry + granted scopes), deliberately free of any
-/// Google SDK type so it can live in the SharedKernel.
+/// A short-lived <c>youtube.force-ssl</c> access credential for the Google account that OWNS a given
+/// YouTube channel. Handed to a caller that performs the actual YouTube call itself — this is an Access
+/// primitive (token + expiry + granted scopes), deliberately free of any Google SDK type so it can live
+/// in the SharedKernel. <c>youtube.force-ssl</c> authorizes full read AND write of the owner's YouTube
+/// account, so the SAME credential covers comment monitoring (<c>commentThreads.list</c>) and moderation
+/// (<c>comments.setModerationStatus</c>).
 /// </summary>
 public sealed record GoogleChannelCredential(
     Guid AccountId,
@@ -23,10 +25,14 @@ public sealed record GoogleChannelCredential(
     IReadOnlyList<string> Scopes);
 
 /// <summary>
-/// Resolves a moderation-capable Google access credential for the account that owns a YouTube channel.
-/// <para><b>This contract is about GOOGLE ACCESS, not comments.</b> The caller (e.g. the YouTube
-/// Comments module) performs the actual <c>comments.setModerationStatus</c> call with the returned
-/// access token — moderation is the caller's domain, credential-resolution is the implementer's.</para>
+/// Resolves a <c>youtube.force-ssl</c> Google access credential for the account that owns a YouTube
+/// channel. ONE getter serves both read and write: the YouTube Comments module uses the returned token
+/// to MONITOR comments (<c>commentThreads.list</c>/<c>comments.list</c>) and to MODERATE them
+/// (<c>comments.setModerationStatus</c>) — so monitoring-gating and reject-gating are consistent by
+/// construction (a channel either has a force-ssl owner account, enabling both, or neither).
+/// <para><b>This contract is about GOOGLE ACCESS, not comments.</b> The caller performs the actual
+/// YouTube call with the returned access token — the YouTube domain is the caller's, credential
+/// resolution is the implementer's.</para>
 /// <para><b>Ownership of the OAuth client stays with whoever owns Google OAuth.</b> Today the YouTube
 /// Uploads module owns the OAuth clients ("Projects") and implements this contract over them, so the
 /// refresh token stays issued + refreshed by its own Project client (no token migration, Uploads'
@@ -40,7 +46,8 @@ public interface IGoogleChannelCredentials
     /// Resolve a <c>youtube.force-ssl</c> access credential for the ACTIVE account that owns
     /// <paramref name="youtubeChannelId"/>. Returns <c>null</c> when no active account owns that
     /// channel, or the owning account has not been granted the force-ssl scope — the caller surfaces an
-    /// honest "not connected for moderation" error rather than failing silently.
+    /// honest "no connected Google account for this channel" state (disabled monitoring / "re-connect to
+    /// enable") rather than failing silently.
     /// </summary>
-    Task<GoogleChannelCredential?> GetModerationCredentialAsync(string youtubeChannelId, CancellationToken ct = default);
+    Task<GoogleChannelCredential?> GetChannelCredentialAsync(string youtubeChannelId, CancellationToken ct = default);
 }

@@ -1,7 +1,6 @@
 import {
   CloudUpload,
   Home,
-  Key,
   Link2,
   MessageSquare,
   Moon,
@@ -25,9 +24,9 @@ export type RouteId =
   | "ytu-queue"
   | "ytu-history"
   | "ytu-mappings"
+  | "ytu-settings"
   | "conn-slack"
   | "conn-google"
-  | "conn-keys"
   | "logs"
   | "settings";
 
@@ -94,19 +93,19 @@ const uploadsTool: ToolDef = {
     { id: "ytu-queue", path: "/uploads/queue", label: () => "Queue", icon: () => CloudUpload, cmdIcon: () => CloudUpload, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Queue`, module: "youtube-uploads" },
     { id: "ytu-history", path: "/uploads/history", label: () => "History", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · History`, module: "youtube-uploads" },
     { id: "ytu-mappings", path: "/uploads/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Mappings`, module: "youtube-uploads" },
+    { id: "ytu-settings", path: "/uploads/settings", label: () => "Settings", icon: () => Settings, cmdIcon: () => Settings, cmdGroup: "Pages", cmdLabel: (p) => `${p.uploads} · Settings`, module: "youtube-uploads" },
   ],
 };
 
 const slackLeaf: LeafDef = { id: "conn-slack", path: "/connections/slack", label: () => "Slack workspaces", icon: () => SlackIcon, cmdIcon: () => SlackIcon, cmdGroup: "Connections", cmdLabel: () => "Slack workspaces", module: null };
 const googleLeaf: LeafDef = { id: "conn-google", path: "/connections/google", label: (p) => p.account, icon: (p) => p.icon, cmdIcon: (p) => p.icon, cmdGroup: "Connections", cmdLabel: (p) => p.account, module: null };
-const keysLeaf: LeafDef = { id: "conn-keys", path: "/connections/keys", label: (p) => p.keys, icon: () => Key, cmdIcon: () => Key, cmdGroup: "Connections", cmdLabel: (p) => p.keys, module: null };
 
 const logsLeaf: LeafDef = { id: "logs", path: "/system/logs", label: () => "Logs", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "System", cmdLabel: () => "Logs", module: null };
 const settingsLeaf: LeafDef = { id: "settings", path: "/system/settings", label: () => "Settings", icon: () => Settings, cmdIcon: () => Settings, cmdGroup: "System", cmdLabel: () => "Settings", module: null };
 
 const GROUPS: GroupDef[] = [
   { kind: "group", label: "Tools", entries: [commentsTool, uploadsTool] },
-  { kind: "group", label: "Connections", entries: [slackLeaf, googleLeaf, keysLeaf] },
+  { kind: "group", label: "Connections", entries: [slackLeaf, googleLeaf] },
   { kind: "group", label: "System", entries: [logsLeaf, settingsLeaf] },
 ];
 
@@ -117,7 +116,6 @@ const ALL_LEAVES: LeafDef[] = [
   ...uploadsTool.children,
   slackLeaf,
   googleLeaf,
-  keysLeaf,
   logsLeaf,
   settingsLeaf,
 ];
@@ -231,10 +229,9 @@ export function buildCommandItems(p: Platform): CommandEntry[] {
   }));
 }
 
-export function buildCommandActions(p: Platform): CommandEntry[] {
+export function buildCommandActions(): CommandEntry[] {
   return [
     { id: "act-upload", label: "Queue an upload", group: "Actions", icon: Plus, path: ROUTE_PATH["ytu-queue"] },
-    { id: "act-key", label: `Add ${p.keys.replace(/s$/, "")}`, group: "Actions", icon: Key, path: ROUTE_PATH["conn-keys"] },
     { id: "act-mapping", label: "Add comment mapping", group: "Actions", icon: MessageSquare, path: ROUTE_PATH["ytc-mappings"] },
     { id: "act-theme", label: "Toggle theme", group: "Actions", icon: Moon, action: "toggle-theme" },
   ];

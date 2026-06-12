@@ -7,7 +7,6 @@ public enum ConnectionType
 {
     Slack,
     Google,
-    YouTubeApiKey,
 }
 
 /// <summary>A module declares the connections it needs; the host can validate availability.</summary>
@@ -15,10 +14,16 @@ public sealed record ConnectionRequirement(ConnectionType Type, bool Required = 
 
 // ── Typed accessors (modules resolve a credential at job time; they never touch storage) ──
 
-public sealed record SlackWorkspaceSummary(Guid Id, string TeamId, string TeamName, bool IsActive);
+/// <summary>A connected Slack workspace. <paramref name="App"/> identifies WHICH Slack app installed it
+/// (each tool is its own Slack app, so the same team can be connected once per app — one bot token each).</summary>
+public sealed record SlackWorkspaceSummary(Guid Id, string TeamId, string TeamName, string App, bool IsActive);
 
-/// <summary>Payload to upsert a Slack workspace into the shared store (OAuth v2 install callback).</summary>
+/// <summary>Payload to upsert a Slack workspace into the shared store (OAuth v2 install callback).
+/// <paramref name="App"/> = the owning module's Slack app key (e.g. <c>youtube-uploads</c> /
+/// <c>youtube-comments</c>) so two apps installed into the same team keep SEPARATE rows + bot tokens
+/// instead of overwriting each other.</summary>
 public sealed record SlackWorkspaceWrite(
+    string App,
     string TeamId,
     string TeamName,
     string BotToken,
@@ -30,14 +35,16 @@ public interface ISlackConnections
 {
     Task<string?> GetBotTokenAsync(Guid workspaceId, CancellationToken ct = default);
 
-    /// <summary>Resolve a bot token by Slack team id — the events endpoint maps an inbound <c>team_id</c>.</summary>
-    Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default);
+    /// <summary>Resolve a bot token by Slack team id FOR A SPECIFIC APP — the events endpoint maps an
+    /// inbound <c>team_id</c> and knows which app (module) it serves. <c>team_id</c> alone is no longer
+    /// unique now that each tool is its own Slack app.</summary>
+    Task<string?> GetBotTokenForTeamAsync(string teamId, string app, CancellationToken ct = default);
 
     Task<IReadOnlyList<SlackWorkspaceSummary>> ListAsync(CancellationToken ct = default);
 
-    Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default);
+    Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, string app, CancellationToken ct = default);
 
-    /// <summary>Insert or update (by team id) a workspace + encrypted bot token. Returns the workspace id.</summary>
+    /// <summary>Insert or update (by team id + app) a workspace + encrypted bot token. Returns the workspace id.</summary>
     Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default);
 
     /// <summary>Deactivate a workspace and publish <see cref="SlackWorkspaceDisconnected"/>.</summary>
@@ -110,36 +117,6 @@ public interface IGoogleConnections
     Task<bool> DeactivateAsync(Guid accountId, CancellationToken ct = default);
 }
 
-// ── YouTube Data API keys (comment polling — API keys, NOT OAuth) ──
-
-public sealed record YouTubeApiKeySummary(Guid Id, string Name, string KeyHint, bool IsActive, DateTimeOffset CreatedAt);
-
-/// <summary>
-/// Typed accessor over the shared <c>api_keys</c> store for the YouTube Comments module's
-/// quota-rotated polling. Multiple keys per provider; the module ranks them by remaining
-/// Pacific-day quota (tracked module-locally) and resolves the decrypted key at poll time.
-/// </summary>
-public interface IYouTubeApiKeyConnections
-{
-    /// <summary>All keys (active + disabled) for the admin UI.</summary>
-    Task<IReadOnlyList<YouTubeApiKeySummary>> ListAsync(CancellationToken ct = default);
-
-    /// <summary>Only active keys — the rotation candidate set.</summary>
-    Task<IReadOnlyList<YouTubeApiKeySummary>> ListActiveAsync(CancellationToken ct = default);
-
-    /// <summary>The decrypted API key for a given id (resolved at poll time for the lease).</summary>
-    Task<string?> GetApiKeyAsync(Guid keyId, CancellationToken ct = default);
-
-    /// <summary>Insert a new key (encrypts at rest). Returns the new key id.</summary>
-    Task<Guid> CreateAsync(string name, string apiKey, string keyHint, CancellationToken ct = default);
-
-    /// <summary>Enable/disable a key in the rotation pool. No event (the pool simply shrinks/grows).</summary>
-    Task<bool> ToggleAsync(Guid keyId, bool isActive, CancellationToken ct = default);
-
-    /// <summary>Hard-delete a key and publish <see cref="YouTubeApiKeyDisconnected"/>.</summary>
-    Task<bool> DeleteAsync(Guid keyId, CancellationToken ct = default);
-}
-
 public sealed record ConnectionSummary(Guid Id, ConnectionType Type, string Label, string Status, string? Detail);
 
 public interface IConnectionCatalog
@@ -152,6 +129,3 @@ public interface IConnectionCatalog
 public sealed record SlackWorkspaceDisconnected(Guid WorkspaceId) : IntegrationEvent;
 
 public sealed record GoogleAccountDisconnected(Guid AccountId) : IntegrationEvent;
-
-/// <summary>A YouTube API key was deleted from the shared pool — modules drop any per-key state (e.g. quota rows).</summary>
-public sealed record YouTubeApiKeyDisconnected(Guid KeyId) : IntegrationEvent;

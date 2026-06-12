@@ -1,3 +1,4 @@
+using Hookline.Modules.YouTubeComments.Domain;
 using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Connections;
 
@@ -6,18 +7,21 @@ using Microsoft.Extensions.Options;
 
 namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
-/// <summary>Aggregated KPIs for the dashboard landing page.</summary>
+/// <summary>
+/// Aggregated KPIs for the dashboard landing page. The quota figure is an APPROXIMATION computed from
+/// each active mapping's configured cadence (not metered actual usage) against the single OAuth
+/// project's daily ceiling — see <see cref="DashboardService.GetStatsAsync"/>.
+/// </summary>
 public sealed record DashboardStatsDto(
     int ActiveMappings,
     int TotalMappings,
     int CommentsToday,
     int CommentsLast24h,
-    long TotalQuotaLimit,
-    long TotalQuotaUsedToday,
-    double QuotaUsedPercent,
+    long QuotaCeiling,
+    long EstimatedDailyUnits,
+    double EstimatedPercent,
     int ErrorsLast24h,
     int ConnectedWorkspaces,
-    int ApiKeyCount,
     int ChannelCount);
 
 /// <summary>A single hour bucket in the "comments processed" timeline. <paramref name="Bucket"/> is the start of the UTC hour.</summary>
@@ -25,17 +29,24 @@ public sealed record CommentsTimelinePoint(DateTimeOffset Bucket, int Count);
 
 /// <summary>
 /// Read-only aggregation over the operational tables for the dashboard. "Today" boundaries use Pacific
-/// Time (matching quota tracking); rolling windows use the last 24 hours from <see cref="DateTimeOffset.UtcNow"/>.
-/// API keys + Slack workspaces are counted via the shared Connections accessors.
+/// Time (matching YouTube's quota reset); rolling windows use the last 24 hours from
+/// <see cref="DateTimeOffset.UtcNow"/>. Slack workspaces are counted via the shared Connections accessor.
 /// </summary>
 public sealed class DashboardService(
     YouTubeCommentsDbContext db,
-    IYouTubeApiKeyConnections keys,
     ISlackConnections slackConnections,
     IAuditLogReader auditLog,
     IOptions<YouTubeCommentsOptions> options)
 {
     private readonly int _dailyLimit = options.Value.DailyQuotaUnits;
+
+    // Approximate quota cost-per-call (YouTube Data API v3 quota table). A poll issues
+    // commentThreads.list (1u) + videos.list (1u) ≈ 2u. The reply sweep's realized cost varies widely
+    // (paged thread scan + per-popular-comment reply pages), so SweepUnitEstimate is a deliberately
+    // CONSERVATIVE upper guess: the meter should OVER-estimate, never under — better to look near the
+    // 10,000 cap early than to silently blow past it thinking there's headroom.
+    private const int PollUnitCost = 2;
+    private const int SweepUnitEstimate = 30;
 
     /// <summary>Computes the dashboard KPI snapshot in a handful of aggregate queries.</summary>
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken ct = default)
@@ -43,7 +54,6 @@ public sealed class DashboardService(
         var now = DateTimeOffset.UtcNow;
         var since24h = now.AddHours(-24);
         var startOfTodayPt = PacificTime.StartOfToday();
-        var todayPt = PacificTime.Today();
 
         var totalMappings = await db.ChannelMappings.AsNoTracking().CountAsync(ct);
         var activeMappings = await db.ChannelMappings.AsNoTracking().CountAsync(m => m.IsActive, ct);
@@ -51,22 +61,32 @@ public sealed class DashboardService(
         var commentsToday = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= startOfTodayPt, ct);
         var commentsLast24h = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since24h, ct);
 
-        var allKeys = await keys.ListAsync(ct);
-        // Meter capacity and usage over the SAME key set (the active keys). The limit is a uniform
-        // per-key ceiling × active-key count; summing usage over only those keys keeps the numerator and
-        // denominator consistent, so a disabled/removed key that still has usage recorded for today
-        // can't push the meter past 100%. Clamp defensively (a final RecordUsage can overshoot a key's
-        // ceiling by one call's units).
-        var activeKeyIds = allKeys.Where(k => k.IsActive).Select(k => k.Id).ToList();
-        var activeKeyCount = activeKeyIds.Count;
-        var totalQuotaLimit = (long)activeKeyCount * _dailyLimit;
-        var totalQuotaUsedToday = activeKeyCount == 0
-            ? 0L
-            : await db.QuotaUsages.AsNoTracking()
-                .Where(q => q.UsageDate == todayPt && activeKeyIds.Contains(q.ApiKeyId))
-                .SumAsync(q => (long)q.UnitsUsed, ct);
-        var quotaUsedPercent = totalQuotaLimit > 0
-            ? Math.Round(Math.Min(100d, (double)totalQuotaUsedToday / totalQuotaLimit * 100), 1)
+        // Estimated daily quota: with API keys gone there is no per-key usage ledger, so PROJECT spend
+        // from each active mapping's configured cadence (polls/day × poll cost + sweeps/day × sweep cost).
+        // This is an over-estimating approximation, NOT metered usage — labelled "≈ estimated" in the UI.
+        var cadences = await db.ChannelMappings.AsNoTracking()
+            .Where(m => m.IsActive)
+            .Select(m => new { m.Frequency, m.IncludeReplies, m.ReplySweepFrequency })
+            .ToListAsync(ct);
+
+        long estimatedDailyUnits = 0;
+        foreach (var m in cadences)
+        {
+            var pollsPerDay = 1440 / (int)m.Frequency; // Frequency value is the interval in minutes
+            estimatedDailyUnits += (long)pollsPerDay * PollUnitCost;
+            if (m.IncludeReplies && m.ReplySweepFrequency != ReplyScanFrequency.Off)
+            {
+                var sweepsPerDay = 1440 / (int)m.ReplySweepFrequency; // sweep value is the interval in minutes
+                estimatedDailyUnits += (long)sweepsPerDay * SweepUnitEstimate;
+            }
+        }
+
+        // Single OAuth project ⇒ one shared daily ceiling (Google default 10,000). If a SECOND Google
+        // project is ever connected, this ceiling must rise to the SUM across projects — today there is
+        // exactly one, so DailyQuotaUnits is the whole ceiling.
+        long quotaCeiling = _dailyLimit;
+        var estimatedPercent = quotaCeiling > 0
+            ? Math.Round(Math.Min(100d, (double)estimatedDailyUnits / quotaCeiling * 100), 1)
             : 0;
 
         // Audit lives in the shared trail; count this module's error-level rows (the level is folded
@@ -84,12 +104,11 @@ public sealed class DashboardService(
             TotalMappings: totalMappings,
             CommentsToday: commentsToday,
             CommentsLast24h: commentsLast24h,
-            TotalQuotaLimit: totalQuotaLimit,
-            TotalQuotaUsedToday: totalQuotaUsedToday,
-            QuotaUsedPercent: quotaUsedPercent,
+            QuotaCeiling: quotaCeiling,
+            EstimatedDailyUnits: estimatedDailyUnits,
+            EstimatedPercent: estimatedPercent,
             ErrorsLast24h: errorsLast24h,
             ConnectedWorkspaces: connectedWorkspaces,
-            ApiKeyCount: allKeys.Count,
             ChannelCount: channelCount);
     }
 

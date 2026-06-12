@@ -17,6 +17,10 @@
 # Local Claude settings
 .claude/settings.local.json
 
+# Filled local cloudflared tunnel config (per-developer tunnel id + creds path).
+# The committed dev/tunnel/cloudflared.config.example.yml is the template.
+dev/tunnel/cloudflared.config.yml
+
 # OS
 .DS_Store
 

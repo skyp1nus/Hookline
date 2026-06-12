@@ -84,6 +84,12 @@ namespace Hookline.Infrastructure.Connections.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("App")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("app");
+
                     b.Property<string>("AuthedUserId")
                         .HasColumnType("text")
                         .HasColumnName("authed_user_id");
@@ -124,49 +130,11 @@ namespace Hookline.Infrastructure.Connections.Migrations
                     b.HasKey("Id")
                         .HasName("pk_slack_workspaces");
 
-                    b.HasIndex("TeamId")
+                    b.HasIndex("TeamId", "App")
                         .IsUnique()
-                        .HasDatabaseName("ix_slack_workspaces_team_id");
+                        .HasDatabaseName("ix_slack_workspaces_team_id_app");
 
                     b.ToTable("slack_workspaces", "connections");
-                });
-
-            modelBuilder.Entity("Hookline.Infrastructure.Connections.YouTubeApiKey", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("ApiKeyEncrypted")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("api_key_encrypted");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("KeyHint")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("key_hint");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("name");
-
-                    b.HasKey("Id")
-                        .HasName("pk_api_keys");
-
-                    b.ToTable("api_keys", "connections");
                 });
 #pragma warning restore 612, 618
         }

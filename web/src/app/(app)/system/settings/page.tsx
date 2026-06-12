@@ -34,7 +34,7 @@ import {
 
 const ALERTS: { key: keyof AlertSettings; title: string; desc: string }[] = [
   { key: "uploadFailures", title: "Upload failures", desc: "Email me when an upload job fails." },
-  { key: "quotaWarnings", title: "Quota warnings", desc: "Alert when any API key passes 80% of daily quota." },
+  { key: "quotaWarnings", title: "Quota warnings", desc: "Alert when the project passes 80% of its daily quota." },
   { key: "oauthExpiry", title: "OAuth expiry", desc: "Warn 7 days before a connection token expires." },
   { key: "weeklyDigest", title: "Weekly digest", desc: "A Monday summary of forwards and uploads." },
 ];

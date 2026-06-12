@@ -9,10 +9,10 @@ namespace Hookline.Modules.YouTubeComments.Infrastructure;
 /// <summary>
 /// YouTube Comments module schema (<c>youtube_comments</c>). Owns the monitored YouTube channels,
 /// the Slack-channel mapping-picker cache, the channel→Slack mappings, the exactly-once dedup ledger
-/// (<c>processed_comments</c>), the durable retry queue (<c>pending_deliveries</c>) and the per-key
-/// Pacific-day quota counters (<c>quota_usage</c>). Slack workspaces + YouTube API keys live in the
-/// shared <c>connections</c> schema — referenced here only by plain id values (no cross-schema FK).
-/// The module has no encrypted columns of its own (every secret is in the shared store).
+/// (<c>processed_comments</c>) and the durable retry queue (<c>pending_deliveries</c>). Slack workspaces
+/// live in the shared <c>connections</c> schema, and monitoring resolves a force-ssl OAuth credential
+/// via the shared <c>IGoogleChannelCredentials</c> contract — both referenced only by plain id values
+/// (no cross-schema FK). The module has no encrypted columns of its own (every secret is in the shared store).
 /// </summary>
 public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbContext> options)
     : HooklineDbContext(options)
@@ -24,7 +24,6 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
     public DbSet<ChannelMapping> ChannelMappings => Set<ChannelMapping>();
     public DbSet<ProcessedComment> ProcessedComments => Set<ProcessedComment>();
     public DbSet<PendingDelivery> PendingDeliveries => Set<PendingDelivery>();
-    public DbSet<QuotaUsage> QuotaUsages => Set<QuotaUsage>();
     public DbSet<CommentModeration> CommentModerations => Set<CommentModeration>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -92,10 +91,6 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
             .WithMany()
             .HasForeignKey(x => x.MappingId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        var qu = b.Entity<QuotaUsage>();
-        qu.ToTable("quota_usage"); // singular — matches the legacy schema; do NOT pluralize.
-        qu.HasKey(x => new { x.ApiKeyId, x.UsageDate });
 
         var mod = b.Entity<CommentModeration>();
         mod.ToTable("comment_moderations");

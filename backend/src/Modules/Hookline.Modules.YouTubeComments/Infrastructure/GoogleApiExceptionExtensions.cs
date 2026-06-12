@@ -23,19 +23,6 @@ public static class GoogleApiExceptionExtensions
     public static bool IsTransient(this GoogleApiException ex) => IsTransientStatus(ex.HttpStatusCode);
 
     /// <summary>
-    /// True for a hard, key/project-level credential failure that will not fix itself: the key was
-    /// revoked/invalid, expired, restricted (IP/referer), or the YouTube Data API is not enabled for
-    /// its project. The job auto-disables such a key so it drops out of rotation instead of failing
-    /// every tick. Deliberately excludes <c>quotaExceeded</c> (recovers at the Pacific-day rollover)
-    /// and channel-level <c>commentsDisabled</c>.
-    /// </summary>
-    public static bool IsKeyInvalid(this GoogleApiException ex) =>
-        ex.HasReason("keyInvalid")
-        || ex.HasReason("keyExpired")
-        || ex.HasReason("accessNotConfigured")
-        || ex.HasReason("ipRefererBlocked");
-
-    /// <summary>
     /// True when any reported <see cref="Google.Apis.Requests.SingleError.Reason"/> equals
     /// <paramref name="reason"/> (case-insensitive), e.g. <c>quotaExceeded</c>, <c>commentsDisabled</c>.
     /// </summary>

@@ -21,6 +21,9 @@ namespace Hookline.Modules.YouTubeComments.Endpoints;
 public static class YouTubeCommentsProviderEndpoints
 {
     private const string SlackStateCookie = "ytc_slack_oauth_state";
+    // chat:write = post cards; channels:read + groups:read = list + target public channels AND private
+    // channels (groups) — same visibility as YouTube Uploads; team:read = workspace name. These must ALSO
+    // be configured in the Comments Slack app's Bot Token Scopes in the Slack console, then re-installed.
     private const string InstallScopes = "chat:write,channels:read,groups:read,team:read";
 
     public static void MapYouTubeCommentsProviderEndpoints(this IEndpointRouteBuilder app)
@@ -49,28 +52,41 @@ public static class YouTubeCommentsProviderEndpoints
             return Results.Ok();
 
         using var doc = JsonDocument.Parse(payloadJson);
-        var p = doc.RootElement;
+        await DispatchBlockActionsAsync(doc.RootElement, moderation, slack, ct);
+        return Results.Ok();
+    }
 
+    /// <summary>
+    /// Routes a Slack <c>block_actions</c> interactivity payload whose signature has ALREADY been verified by
+    /// the caller — the HTTP webhook above, or the dev-only Socket Mode client (pre-authenticated by the WSS
+    /// handshake, so there is no per-message signature to check) — to the moderation service. Only the
+    /// "Reject on YouTube" button takes a server action; the open-comment / re-consent buttons are URL links.
+    /// The card is updated in place on success or an honest ephemeral error is returned. Shared by both
+    /// inbound transports so they behave identically.
+    /// </summary>
+    internal static async Task DispatchBlockActionsAsync(
+        JsonElement p, CommentModerationService moderation, ISlackClient slack, CancellationToken ct)
+    {
         if (!p.TryGetProperty("type", out var pt) || pt.GetString() != "block_actions")
-            return Results.Ok();
+            return;
         if (!p.TryGetProperty("actions", out var actions) || actions.GetArrayLength() == 0)
-            return Results.Ok();
+            return;
 
         var action = actions[0];
         var actionId = action.TryGetProperty("action_id", out var aid) ? aid.GetString() : null;
         if (actionId != SlackActions.RejectComment)
-            return Results.Ok(); // the open_comment link button needs no server action
+            return; // the open_comment / reconsent_google link buttons need no server action
 
         var value = action.TryGetProperty("value", out var v) ? v.GetString() : null;
         var responseUrl = p.TryGetProperty("response_url", out var ru) ? ru.GetString() : null;
         if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(responseUrl))
-            return Results.Ok();
+            return;
 
         // value = "{mappingId}:{commentId}". Split on the FIRST colon — a comment id may contain none,
         // but it never contains a colon, and a Guid never does.
         var sep = value.IndexOf(':');
         if (sep <= 0 || !Guid.TryParse(value[..sep], out var mappingId))
-            return Results.Ok();
+            return;
         var commentId = value[(sep + 1)..];
 
         var actor = ExtractActor(p);
@@ -91,8 +107,6 @@ public static class YouTubeCommentsProviderEndpoints
             await slack.PostToResponseUrlAsync(
                 responseUrl, new { response_type = "ephemeral", replace_original = false, text = result.Message }, ct);
         }
-
-        return Results.Ok();
     }
 
     private static SlackActor ExtractActor(JsonElement payload)

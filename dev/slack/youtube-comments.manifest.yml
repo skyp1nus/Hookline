@@ -1,0 +1,36 @@
+# Slack app manifest — Hookline "YouTube Comments" (the SECOND per-module app; separate from Uploads).
+# Create at https://api.slack.com/apps → "Create New App" → "From a manifest" → paste this.
+# Socket Mode is ON, so no Request URL is needed for interactivity. NOTE: Comments has NO event
+# subscriptions — its only inbound Slack surface is the "Reject on YouTube" interactivity button.
+# After creating:
+#   1. Basic Information → App-Level Tokens → generate a token with scope `connections:write`
+#      (this is the xapp-… COMMENTS_SLACK_APP_TOKEN — manifests cannot create it).
+#   2. Basic Information → App Credentials → copy Signing Secret + Client ID + Client Secret into .env
+#      (SLACK_COMMENTS_* keys).
+#   3. Install to the workspace via the Hookline panel → Connections → Slack, then /invite the bot
+#      into the mapped channels.
+# See docs/dev/local-testing.md.
+display_information:
+  name: Hookline YouTube Comments
+  description: YouTube comment monitoring -> Slack, with "Reject on YouTube".
+features:
+  bot_user:
+    display_name: hookline-comments
+    always_online: true
+oauth_config:
+  redirect_urls:
+    - https://hookline-dev.danielhub.dev/slack/youtube-comments/oauth/callback
+    - http://localhost:8080/slack/youtube-comments/oauth/callback
+  scopes:
+    bot:
+      - chat:write
+      - channels:read
+      - groups:read
+      - team:read
+settings:
+  # No event_subscriptions — Comments has no Slack events surface.
+  interactivity:
+    is_enabled: true   # the "Reject on YouTube" button (no Request URL in Socket Mode)
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false

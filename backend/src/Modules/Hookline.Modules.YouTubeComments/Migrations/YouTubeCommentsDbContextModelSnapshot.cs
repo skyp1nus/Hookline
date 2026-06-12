@@ -251,30 +251,6 @@ namespace Hookline.Modules.YouTubeComments.Migrations
                     b.ToTable("processed_comments", "youtube_comments");
                 });
 
-            modelBuilder.Entity("Hookline.Modules.YouTubeComments.Domain.QuotaUsage", b =>
-                {
-                    b.Property<Guid>("ApiKeyId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("api_key_id");
-
-                    b.Property<DateOnly>("UsageDate")
-                        .HasColumnType("date")
-                        .HasColumnName("usage_date");
-
-                    b.Property<int>("UnitsUsed")
-                        .HasColumnType("integer")
-                        .HasColumnName("units_used");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("ApiKeyId", "UsageDate")
-                        .HasName("pk_quota_usage");
-
-                    b.ToTable("quota_usage", "youtube_comments");
-                });
-
             modelBuilder.Entity("Hookline.Modules.YouTubeComments.Domain.SlackChannel", b =>
                 {
                     b.Property<Guid>("Id")

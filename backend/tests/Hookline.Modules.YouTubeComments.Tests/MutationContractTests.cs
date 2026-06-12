@@ -25,36 +25,14 @@ public class MutationContractTests
             Assert.True(root.TryGetProperty(key, out _), $"expected JSON property '{key}'");
     }
 
-    // ── API keys ──
-
-    [Fact]
-    public void CreateApiKeyRequest_uses_camelCase_keys()
-    {
-        var root = Serialize(new CreateApiKeyRequest("Primary", "AIzaSyExampleKey"));
-        AssertHasAll(root, "name", "apiKey");
-        Assert.Equal("AIzaSyExampleKey", root.GetProperty("apiKey").GetString());
-    }
-
-    [Fact]
-    public void ApiKeyDto_uses_camelCase_keys_with_numeric_quota_fields()
-    {
-        var root = Serialize(new ApiKeyDto(
-            Guid.NewGuid(), "Primary", "AIza…9999", 10000, true, DateTimeOffset.UnixEpoch, 1500, 8500));
-        AssertHasAll(root,
-            "id", "name", "keyHint", "dailyQuotaLimit", "isActive", "createdAt", "todayUnitsUsed", "remainingQuota");
-        Assert.Equal(10000, root.GetProperty("dailyQuotaLimit").GetInt32());
-        Assert.Equal(1500, root.GetProperty("todayUnitsUsed").GetInt32());
-        Assert.Equal(8500, root.GetProperty("remainingQuota").GetInt32());
-    }
-
     // ── channels ──
 
     [Fact]
     public void AddChannelRequest_uses_camelCase_keys()
     {
-        var root = Serialize(new AddChannelRequest("@SomeHandle"));
-        AssertHasAll(root, "input");
-        Assert.Equal("@SomeHandle", root.GetProperty("input").GetString());
+        var root = Serialize(new AddChannelRequest("UC_someConnectedChannel"));
+        AssertHasAll(root, "youTubeChannelId");
+        Assert.Equal("UC_someConnectedChannel", root.GetProperty("youTubeChannelId").GetString());
     }
 
     // ── mappings ──

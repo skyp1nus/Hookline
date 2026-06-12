@@ -6,9 +6,8 @@ import { api } from "@/lib/api/client";
 
 import {
   type AddChannelInput,
-  type ApiKeyDto,
   type CommentsTimelinePoint,
-  type CreateApiKeyInput,
+  type ConnectedChannelOption,
   type CreateMappingInput,
   type DashboardStats,
   type MappingDto,
@@ -48,6 +47,16 @@ export function useChannels() {
   });
 }
 
+/** The operator's own channels that CAN be monitored (a connected, comment-capable Google account owns
+ * each). An empty list is the honest "connect Google to enable monitoring" gated state. */
+export function useAvailableChannels(enabled = true) {
+  return useQuery({
+    queryKey: ["comments", "available-channels"],
+    queryFn: () => api.get<ConnectedChannelOption[]>("/youtube-comments/youtube/channels/available"),
+    enabled,
+  });
+}
+
 export function useCommentMappings() {
   return useQuery({
     queryKey: ["comments", "mappings"],
@@ -64,11 +73,15 @@ export function useMappingOptions(enabled = true) {
   });
 }
 
-/** Stored YouTube Data API keys with today's quota usage. */
-export function useApiKeys() {
-  return useQuery({
-    queryKey: ["comments", "keys"],
-    queryFn: () => api.get<ApiKeyDto[]>("/youtube-comments/keys"),
+/**
+ * Re-sync the Slack channel caches for all active workspaces. The mapping picker reads a module-local cache
+ * that is otherwise only filled on the module's own Slack OAuth connect — but Slack is connected through the
+ * shared Connections area, which never touches it. The Add-mapping dialog fires this on open; the options
+ * query reads the freshened cache once this settles. Best-effort on the backend.
+ */
+export function useRefreshSlackChannels() {
+  return useMutation({
+    mutationFn: () => api.post("/youtube-comments/slack/refresh-channels"),
   });
 }
 
@@ -110,9 +123,10 @@ export function useDeleteMapping() {
   });
 }
 
-// ── channels (add) ──
-// The standalone Channels page was removed; the only entry point for tracking a channel is now the inline
-// add-by-URL/@handle/id field in the comment mapping dialog, so creating a mapping still works end-to-end.
+// ── channels (track) ──
+// Monitoring is OAuth-only: a channel can be tracked only if a connected Google account owns it (picked
+// from useAvailableChannels). The mapping dialog tracks the chosen channel inline, so creating a mapping
+// works end-to-end without a separate Channels page.
 
 export function useCreateChannel() {
   const qc = useQueryClient();
@@ -120,43 +134,8 @@ export function useCreateChannel() {
     mutationFn: (body: AddChannelInput) => api.post<YouTubeChannelDto>("/youtube-comments/youtube/channels", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comments", "channels"] });
+      qc.invalidateQueries({ queryKey: ["comments", "available-channels"] });
       qc.invalidateQueries({ queryKey: ["comments", "mapping-options"] });
-      qc.invalidateQueries({ queryKey: ["comments", "stats"] });
-    },
-  });
-}
-
-// ── API keys (add + validate-on-create / toggle / delete) ──
-
-export function useCreateApiKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    // The backend validates against the YouTube API and returns 400 (never stores) for a bad key.
-    mutationFn: (body: CreateApiKeyInput) => api.post<ApiKeyDto>("/youtube-comments/keys", body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", "keys"] });
-      qc.invalidateQueries({ queryKey: ["comments", "stats"] });
-    },
-  });
-}
-
-export function useToggleApiKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.patch<ApiKeyDto>(`/youtube-comments/keys/${id}/toggle`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", "keys"] });
-      qc.invalidateQueries({ queryKey: ["comments", "stats"] });
-    },
-  });
-}
-
-export function useDeleteApiKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.del(`/youtube-comments/keys/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["comments", "keys"] });
       qc.invalidateQueries({ queryKey: ["comments", "stats"] });
     },
   });

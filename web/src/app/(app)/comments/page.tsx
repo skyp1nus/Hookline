@@ -38,9 +38,9 @@ function toStatCards(s: DashboardStats): DashStat[] {
     },
     {
       id: "quota",
-      label: "Quota used · today",
-      value: `${s.quotaUsedPercent}%`,
-      sub: `${formatNumber(s.totalQuotaUsedToday)} / ${formatNumber(s.totalQuotaLimit)} units`,
+      label: "Quota · today",
+      value: `≈ ${s.estimatedPercent}%`,
+      sub: `est. ${formatNumber(s.estimatedDailyUnits)} / ${formatNumber(s.quotaCeiling)} units`,
     },
     {
       id: "errors",

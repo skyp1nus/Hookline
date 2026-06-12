@@ -1,4 +1,5 @@
 using Hookline.Modules.YouTubeComments.Domain;
+using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -14,21 +15,33 @@ public sealed record YouTubeChannelDto(
     DateTimeOffset AddedAt,
     int MappingCount);
 
-/// <summary>Request to add a channel by raw id, <c>@handle</c>, or youtube.com URL.</summary>
-public sealed record AddChannelRequest(string Input);
+/// <summary>
+/// A YouTube channel the operator can monitor: one owned by a connected Google account that has granted
+/// the comment-management (force-ssl) scope. <see cref="AlreadyTracked"/> marks the ones already added.
+/// </summary>
+public sealed record ConnectedChannelOption(
+    string YouTubeChannelId,
+    string Title,
+    string? ThumbnailUrl,
+    bool AlreadyTracked);
 
-/// <summary>Thrown when a channel can't be resolved or no key has quota (-> 400).</summary>
+/// <summary>Request to track one of the operator's connected YouTube channels (by its channel id).</summary>
+public sealed record AddChannelRequest(string YouTubeChannelId);
+
+/// <summary>Thrown when the requested channel is not a connected, comment-capable account (-> 400).</summary>
 public sealed class ChannelResolutionException(string message) : Exception(message);
 
 /// <summary>
-/// Manages the tracked set of YouTube channels: listing them with their mapping counts, and adding a
-/// channel by resolving a raw id, <c>@handle</c>, or youtube.com URL against the YouTube Data API
-/// (consuming a leased key's quota) before upserting it by channel id.
+/// Manages the tracked set of YouTube channels. Monitoring is OAuth-only, so a channel can be tracked
+/// ONLY if a connected Google account OWNS it and has granted the force-ssl scope (the SAME credential
+/// that powers monitoring + the Reject button — consistent gating by construction). Channels are picked
+/// from <see cref="ListAvailableAsync"/> (the connected accounts' own channels), never resolved from an
+/// arbitrary URL/@handle via an API key. When no connected account is comment-capable, the available
+/// list is empty — the honest "connect Google to enable monitoring" gated state.
 /// </summary>
 public sealed class ChannelService(
     YouTubeCommentsDbContext db,
-    IYouTubeClient youtube,
-    IYouTubeApiKeyProvider keys,
+    IGoogleConnections googleConnections,
     ICommentsAudit audit)
 {
     /// <summary>Lists every tracked channel, newest first, with the number of mappings targeting it.</summary>
@@ -41,44 +54,55 @@ public sealed class ChannelService(
             .ToArrayAsync(ct);
 
     /// <summary>
-    /// Resolves <paramref name="input"/> to a YouTube channel and upserts it. Acquires an API key with
-    /// available quota, calls the YouTube API, records the quota consumed, then returns the existing or
-    /// newly-created channel. Throws <see cref="ChannelResolutionException"/> (-> 400) when no key has
-    /// quota or the input doesn't resolve to a channel.
+    /// The operator's own channels that CAN be monitored: each connected, active Google account that has
+    /// a channel id and the force-ssl scope. Already-tracked channels are flagged (not hidden) so the UI
+    /// can show them disabled. An empty list is the honest "connect a Google account with the
+    /// comment-management permission to enable monitoring" gated state.
     /// </summary>
-    public async Task<YouTubeChannelDto> AddAsync(string input, CancellationToken ct = default)
+    public async Task<ConnectedChannelOption[]> ListAvailableAsync(CancellationToken ct = default)
     {
-        var trimmed = input?.Trim() ?? string.Empty;
-        if (trimmed.Length == 0)
-            throw new ChannelResolutionException("A channel id, handle, or URL is required.");
+        var tracked = (await db.YouTubeChannels.AsNoTracking().Select(c => c.YouTubeChannelId).ToListAsync(ct))
+            .ToHashSet(StringComparer.Ordinal);
 
-        // A /c/CUSTOM URL costs 101 units (search.list + channels.list); everything else costs 1.
-        // Acquire enough for the worst case so the lookup never aborts mid-flight on quota.
-        var lease = await keys.AcquireAsync(unitsNeeded: 101, ct)
-            ?? throw new ChannelResolutionException("No YouTube API key with available quota");
+        var options = new List<ConnectedChannelOption>();
+        foreach (var capable in await ResolveCapableChannelsAsync(ct))
+        {
+            options.Add(new ConnectedChannelOption(
+                capable.ChannelId, capable.Title, capable.ThumbnailUrl, tracked.Contains(capable.ChannelId)));
+        }
 
-        var result = await youtube.GetChannelAsync(lease.ApiKey, trimmed, ct);
+        return options.OrderBy(o => o.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
 
-        // Always record the quota actually consumed, even when the channel didn't resolve.
-        if (result.UnitsUsed > 0)
-            await keys.RecordUsageAsync(lease.Id, result.UnitsUsed, ct);
+    /// <summary>
+    /// Tracks one of the operator's connected channels by its channel id. Validates that a connected,
+    /// comment-capable account owns it (-> 400 otherwise), then upserts by the immutable channel id.
+    /// No YouTube API call: the title/avatar come from the connected account's snapshot.
+    /// </summary>
+    public async Task<YouTubeChannelDto> AddAsync(string youTubeChannelId, CancellationToken ct = default)
+    {
+        var channelId = youTubeChannelId?.Trim() ?? string.Empty;
+        if (channelId.Length == 0)
+            throw new ChannelResolutionException("A connected YouTube channel is required.");
 
-        if (result.Channel is null)
-            throw new ChannelResolutionException($"Could not resolve channel from '{trimmed}'");
-
-        var info = result.Channel;
+        var capable = (await ResolveCapableChannelsAsync(ct))
+            .FirstOrDefault(c => string.Equals(c.ChannelId, channelId, StringComparison.Ordinal));
+        if (capable is null)
+            throw new ChannelResolutionException(
+                "That channel isn't connected for monitoring. Connect its Google account (and grant the "
+                + "comment-management permission) in Connections → Google, then add it here.");
 
         // Upsert by the immutable YouTube channel id: if we already track it, return as-is.
-        var existing = await db.YouTubeChannels.FirstOrDefaultAsync(c => c.YouTubeChannelId == info.ChannelId, ct);
+        var existing = await db.YouTubeChannels.FirstOrDefaultAsync(c => c.YouTubeChannelId == channelId, ct);
         if (existing is not null)
             return await ToDtoAsync(existing, ct);
 
         var entity = new YouTubeChannel
         {
-            YouTubeChannelId = info.ChannelId,
-            Title = info.Title,
-            ThumbnailUrl = info.ThumbnailUrl,
-            Handle = info.Handle,
+            YouTubeChannelId = capable.ChannelId,
+            Title = capable.Title,
+            ThumbnailUrl = capable.ThumbnailUrl,
+            Handle = null, // not part of the connected-account snapshot
             AddedAt = DateTimeOffset.UtcNow,
         };
 
@@ -106,9 +130,41 @@ public sealed class ChannelService(
         return true;
     }
 
+    /// <summary>
+    /// The connected, active Google accounts that own a channel AND hold the force-ssl scope — the set we
+    /// can both monitor and moderate. Reads the shared store's scope snapshot (a contract call, not a
+    /// join); mirrors <see cref="CommentModerationService.CanModerateAsync"/>'s capability test.
+    /// </summary>
+    private async Task<List<CapableChannel>> ResolveCapableChannelsAsync(CancellationToken ct)
+    {
+        var capable = new List<CapableChannel>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var summary in await googleConnections.ListAsync(ct))
+        {
+            if (!summary.IsActive)
+                continue;
+
+            var detail = await googleConnections.GetAsync(summary.Id, ct);
+            if (detail is not { IsActive: true, ChannelId: { Length: > 0 } channelId })
+                continue;
+            if (!detail.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(GoogleScopes.YouTubeForceSsl, StringComparer.Ordinal))
+                continue;
+
+            // One option per channel even if multiple accounts own it (the credential resolver picks one).
+            if (seen.Add(channelId))
+                capable.Add(new CapableChannel(channelId, detail.ChannelTitle, detail.AvatarUrl));
+        }
+
+        return capable;
+    }
+
     private async Task<YouTubeChannelDto> ToDtoAsync(YouTubeChannel channel, CancellationToken ct)
     {
         var mappingCount = await db.ChannelMappings.CountAsync(m => m.YouTubeChannelId == channel.Id, ct);
         return new YouTubeChannelDto(channel.Id, channel.YouTubeChannelId, channel.Title, channel.ThumbnailUrl, channel.Handle, channel.AddedAt, mappingCount);
     }
+
+    private sealed record CapableChannel(string ChannelId, string Title, string? ThumbnailUrl);
 }

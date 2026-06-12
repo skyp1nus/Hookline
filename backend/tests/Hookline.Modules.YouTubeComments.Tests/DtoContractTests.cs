@@ -30,11 +30,11 @@ public class DtoContractTests
     [Fact]
     public void DashboardStats_uses_the_expected_camelCase_keys()
     {
-        var root = Serialize(new DashboardStatsDto(1, 2, 3, 4, 5, 6, 7.5, 8, 9, 10, 11));
+        var root = Serialize(new DashboardStatsDto(1, 2, 3, 4, 5, 6, 7.5, 8, 9, 10));
         AssertHasAll(root,
-            "activeMappings", "totalMappings", "commentsToday", "commentsLast24h", "totalQuotaLimit",
-            "totalQuotaUsedToday", "quotaUsedPercent", "errorsLast24h", "connectedWorkspaces",
-            "apiKeyCount", "channelCount");
+            "activeMappings", "totalMappings", "commentsToday", "commentsLast24h", "quotaCeiling",
+            "estimatedDailyUnits", "estimatedPercent", "errorsLast24h", "connectedWorkspaces",
+            "channelCount");
     }
 
     [Fact]

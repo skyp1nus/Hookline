@@ -8,8 +8,9 @@ namespace Hookline.Modules.YouTubeUploads.Infrastructure;
 /// <summary>
 /// The YouTube Uploads module's implementation of the shared <see cref="IGoogleChannelCredentials"/>
 /// contract: it owns the OAuth clients ("Projects") and the account↔channel bindings, so it can hand
-/// any consumer a moderation-capable access credential for the account that owns a channel WITHOUT
-/// exposing client secrets or coupling the consumer to this module.
+/// any consumer a force-ssl access credential for the account that owns a channel WITHOUT
+/// exposing client secrets or coupling the consumer to this module. The same credential covers both
+/// comment monitoring (read) and moderation (write).
 /// <para>The force-ssl decision reads the account's granted-scope snapshot from the shared store (what
 /// Google actually granted at consent); the access token comes from refreshing the refresh token with
 /// its ISSUING Project client (the hard rule — a token is only refreshable by the client that issued
@@ -23,14 +24,14 @@ public sealed class GoogleChannelCredentials(
     GoogleCredentialFactory factory,
     IGoogleConnections googleAccounts) : IGoogleChannelCredentials
 {
-    public async Task<GoogleChannelCredential?> GetModerationCredentialAsync(
+    public async Task<GoogleChannelCredential?> GetChannelCredentialAsync(
         string youtubeChannelId, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(youtubeChannelId))
             return null;
 
         // Resolve ownership on module-local bindings (single schema): the oldest Active binding whose
-        // snapshotted channel id matches. Any owning account can moderate — a single call, not quota-rotated.
+        // snapshotted channel id matches. Any owning account can read+moderate — a single call, not quota-rotated.
         var accountId = await db.GoogleAccountBindings.AsNoTracking()
             .Where(b => b.IsActive && b.Status == "Active" && b.YouTubeChannelId == youtubeChannelId)
             .OrderBy(b => b.CreatedAt)

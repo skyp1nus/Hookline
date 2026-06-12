@@ -2,14 +2,14 @@ namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
 /// <summary>
 /// Single source of truth for the Pacific-Time "quota day". YouTube's Data API quota resets at
-/// midnight Pacific, so every per-key daily counter buckets on this date. One TZ computation for the
-/// whole module (the provider, the dashboard, and the API-key read all key off this).
+/// midnight Pacific, so the dashboard's estimated-quota meter and the "comments today" filter both bucket
+/// on this date. One TZ computation for the whole module.
 /// </summary>
 public static class PacificTime
 {
     private static readonly TimeZoneInfo Zone = Resolve();
 
-    /// <summary>Today's Pacific calendar date — the partition of the <c>quota_usage</c> composite key.</summary>
+    /// <summary>Today's Pacific calendar date — matches YouTube's daily quota-reset boundary.</summary>
     public static DateOnly Today()
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).DateTime);
 

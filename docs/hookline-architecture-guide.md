@@ -72,7 +72,7 @@ backend/
       YouTubeComments/                 # DanielHub.Modules.YouTubeComments.csproj  (Phase 2 — planned)
         YouTubeCommentsModule.cs       # implements IModule
         Domain/                        # entities, enums
-        Features/                      # ApiKeys, Channels, Mappings, Dashboard, Logs (handlers + DTOs)
+        Features/                      # Channels, Mappings, Dashboard, Logs (handlers + DTOs)
         Infrastructure/                # YouTubeCommentsDbContext (schema: youtube_comments), Migrations/, YouTube client
         Endpoints/                     # mapped under /api/youtube-comments
         Jobs/                          # polling job + dynamic scheduler
@@ -139,13 +139,13 @@ Boundaries are enforced by `DanielHub.ArchitectureTests` (NetArchTest or ArchUni
 
 This is the single most valuable shared part. **Connect an external account once; consume it from any module.** Everything else is plumbing around this.
 
-**Connection types today:** Slack workspace (OAuth v2 bot token), Google account (OAuth refresh token → YouTube + Drive scopes), YouTube Data API key (YouTube Comments polling). **Future:** LinkedIn (OAuth2), a generic OAuth2 connection, and whatever a "Website" module needs (hosting/CMS credentials, or nothing).
+**Connection types today:** Slack workspace (OAuth v2 bot token), Google account (OAuth refresh token → YouTube + Drive scopes; the `youtube.force-ssl` scope powers YouTube Comments **monitoring and moderation** alike). There is **no API-key connection type** — that subsystem was removed when Comments went OAuth-only. **Future:** LinkedIn (OAuth2), a generic OAuth2 connection, and whatever a "Website" module needs (hosting/CMS credentials, or nothing).
 
 **Responsibilities:** OAuth start/callback flows, encrypted token storage, token refresh, scope tracking, listing + health, and revoke/disconnect. It publishes events on connect/disconnect.
 
 **Public surface (in `SharedKernel`):** typed accessors such as `ISlackConnections.GetBotTokenAsync(workspaceId)`, `IGoogleConnections.GetCredentialAsync(accountId)`, `IConnectionCatalog.List(type)`. A module declares its `RequiredConnections` and resolves a token at job time — it never touches token storage directly.
 
-**Storage:** a `connections` schema (workspaces, google_accounts, api_keys), with every secret encrypted via the shared `ISecretProtector`.
+**Storage:** a `connections` schema (workspaces, google_accounts), with every secret encrypted via the shared `ISecretProtector`.
 
 **Slack app strategy (an important decision):**
 - *Target:* **one hub Slack app** with one set of provider endpoints (`/slack/events`, `/slack/interactivity`, `/slack/oauth/*`) and a **dispatcher** that routes each inbound event to the module(s) that subscribed (by event type / team / channel). The Connections subsystem owns the app credentials and the raw endpoints; modules subscribe to event streams.
@@ -153,7 +153,7 @@ This is the single most valuable shared part. **Connect an external account once
 - Move to the single-app dispatcher as part of consolidation, since the whole reason Slack lives in Connections is that it's a *shared* connection.
 - Distribution detail to remember: installing into a foreign workspace uses the **sharable OAuth-start URL from the backend** (Manage Distribution), *not* the workspace-scoped marketplace URL.
 
-**Google strategy:** one Google Cloud project with **Internal** OAuth consent on an org Workspace account — this bypasses External verification and the CASA assessment entirely, on the hard condition that all YouTube channels and Drive accounts live in that same Workspace domain. One OAuth client; the subsystem stores a refresh token per account; modules request only the scopes they need (Drive readonly + YouTube upload for YouTube Uploads). Keep the distinction sharp: `videos.insert` requires **OAuth2, not an API key** — API keys are only valid for comment monitoring (YouTube Comments).
+**Google strategy:** one Google Cloud project with **Internal** OAuth consent on an org Workspace account — this bypasses External verification and the CASA assessment entirely, on the hard condition that all YouTube channels and Drive accounts live in that same Workspace domain. One OAuth client; the subsystem stores a refresh token per account; modules request only the scopes they need (Drive readonly + YouTube upload for YouTube Uploads). Keep the distinction sharp: `videos.insert` requires **OAuth2, not an API key**. YouTube Comments monitoring is now **also OAuth** — it resolves a `youtube.force-ssl` access credential for the channel's owning account through the SharedKernel `IGoogleChannelCredentials` contract (the same credential the "Reject on YouTube" button uses), so **one Google account per channel covers upload + comment monitoring + moderation**. The API-key subsystem (store, quota-rotation, `quota_usage`, Keys UI) was removed; with low polling frequency on a few owned channels, multi-key rotation bought nothing and multi-project key juggling is a Google grey area we avoid.
 
 ---
 
@@ -185,7 +185,7 @@ This is the single most valuable shared part. **Connect an external account once
 
 **Recommendation:** standardize on **AES-GCM env-key** for simplicity and statelessness (the hub already relies on it — YouTube Uploads stores its secrets this way). When folding the legacy Comment Bridge source into the YouTube Comments module, run a one-time migration that decrypts its Data-Protection-protected secrets and re-encrypts them under the shared protector. **Never change the master key after launch.**
 
-Everything else: all external secrets (Slack bot tokens, Google refresh tokens, YouTube API keys) encrypted at rest via the protector + `EncryptedString` converter; Slack request-signature verification on webhooks; OAuth `state` validation (CSRF) with short-TTL state cookies; least-privilege OAuth scopes per connection.
+Everything else: all external secrets (Slack bot tokens, Google refresh tokens) encrypted at rest via the protector + `EncryptedString` converter; Slack request-signature verification on webhooks; OAuth `state` validation (CSRF) with short-TTL state cookies; least-privilege OAuth scopes per connection.
 
 ---
 
@@ -221,7 +221,7 @@ web/src/
     (hub)/overview/
     (hub)/comments/{dashboard,feed,channels,mappings}/
     (hub)/uploads/{queue,history,mappings}/
-    (hub)/connections/{slack,google,api-keys}/
+    (hub)/connections/{slack,google}/
     (hub)/{logs,settings}/
     api/                     # the BFF: [...path] proxy + login/logout route handlers
   components/
@@ -297,7 +297,7 @@ Path 1 is a real refactor, so do it in phases:
 
 - **Phase 0 — Foundation.** Stand up `DanielHub.Host` + `SharedKernel` + `Infrastructure` + the Connections and Auth subsystems (skeletons) + the Next.js shell (`sidebar-07`, nav registry, BFF, theme).
 - **Phase 1 — Absorb SlackTube first (DONE).** The legacy SlackTube source repo (already .NET 10, single-project, Redis + Hangfire) is now the **YouTube Uploads** module — `Hookline.Modules.YouTubeUploads`, schema `youtube_uploads`, Redis `ytu:*`, routes `/api/youtube-uploads/*`. Its Slack/Google accounts moved into the shared Connections store; secrets, settings, audit and jobs run on the shared kernel; the module contract is validated end-to-end.
-- **Phase 2 — Absorb Comment Bridge into the YouTube Comments module** — `Hookline.Modules.YouTubeComments`, schema `youtube_comments`, Redis `ytc:*`, routes `/api/youtube-comments/*`. Bump the legacy Comment Bridge / YouTubeBridge source repo to .NET 10; fold its five clean-architecture projects into one module project (Domain/Features/Infrastructure/Endpoints folders); re-encrypt its Data-Protection secrets under the shared AES-GCM protector (one-time); move its YouTube API keys + Slack workspaces into Connections.
+- **Phase 2 — Absorb Comment Bridge into the YouTube Comments module** — `Hookline.Modules.YouTubeComments`, schema `youtube_comments`, Redis `ytc:*`, routes `/api/youtube-comments/*`. Bump the legacy Comment Bridge / YouTubeBridge source repo to .NET 10; fold its five clean-architecture projects into one module project (Domain/Features/Infrastructure/Endpoints folders); re-encrypt its Data-Protection secrets under the shared AES-GCM protector (one-time); move its Slack workspaces into Connections. *(A later pass collapsed Comments to **OAuth-only**: monitoring resolves a `youtube.force-ssl` credential via `IGoogleChannelCredentials` exactly as moderation does, and the entire API-key subsystem — shared `api_keys` store, rotation provider, `quota_usage` table, and the Keys page/route/nav — was removed. The dashboard now shows an **estimated** daily quota from each active mapping's cadence against the single project's 10,000-unit ceiling, not metered per-key usage.)*
 - **Phase 3 — Unify auth.** Single login; retire the two old deployments; point `danielhub.dev` at the hub; 301 the old subdomain.
 - **Phase 4+ — Grow.** Add LinkedIn, Website, and the rest as new modules using the playbook in §13.
 

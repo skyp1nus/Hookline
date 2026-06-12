@@ -55,16 +55,21 @@ public class DedupTests
         Assert.Equal("C1", (await db.ProcessedComments.SingleAsync()).CommentId);
     }
 
-    private static PollCommentsJob Job(YouTubeCommentsDbContext db, FakeYouTube youtube, FakeSlack slack) =>
-        new(db, youtube, slack, new FakeKeyProvider(), new NullScheduler(), new FakeSlackConn(),
-            // No credential providers → CanModerateAsync short-circuits to false; dedup doesn't assert the button.
-            new CommentModerationService(db, Array.Empty<IGoogleChannelCredentials>(), new FakeGoogleConnections(),
-                new FakeYouTubeModerationClient(), new NullAudit(), NullLogger<CommentModerationService>.Instance),
-            new NullAudit(), NullLogger<PollCommentsJob>.Instance);
+    // Monitoring is OAuth-only: seed a force-ssl credential for the test channel so the poll resolves a
+    // token and proceeds (an unseeded channel would hit the honest "no account connected" gated state).
+    private static PollCommentsJob Job(YouTubeCommentsDbContext db, FakeYouTube youtube, FakeSlack slack)
+    {
+        var creds = new FakeGoogleChannelCredentials();
+        creds.Seed(TestChannelId);
+        return new(db, youtube, slack, new IGoogleChannelCredentials[] { creds }, new NullScheduler(),
+            new FakeSlackConn(), new NullAudit(), NullLogger<PollCommentsJob>.Instance);
+    }
+
+    private const string TestChannelId = "UCxxxxxxxxxxxxxxxxxxxxxx";
 
     private static async Task<Guid> SeedMappingAsync(YouTubeCommentsDbContext db, bool includeReplies)
     {
-        var yt = new YouTubeChannel { YouTubeChannelId = "UCxxxxxxxxxxxxxxxxxxxxxx", Title = "Chan" };
+        var yt = new YouTubeChannel { YouTubeChannelId = TestChannelId, Title = "Chan" };
         var ch = new SlackChannel { WorkspaceId = Guid.NewGuid(), SlackChannelId = "C123", Name = "general" };
         db.YouTubeChannels.Add(yt);
         db.SlackChannels.Add(ch);
@@ -83,15 +88,13 @@ public class DedupTests
     // ── fakes ──
     private sealed class FakeYouTube(params YouTubeComment[] comments) : IYouTubeClient
     {
-        public Task<(bool Ok, string? Error)> ValidateKeyAsync(string apiKey, CancellationToken ct = default) => Task.FromResult((true, (string?)null));
-        public Task<ChannelLookupResult> GetChannelAsync(string apiKey, string input, CancellationToken ct = default) => Task.FromResult(new ChannelLookupResult(null, 1));
-        public Task<CommentFetchResult> GetRecentCommentsAsync(string apiKey, string channelId, int maxResults = 50, CancellationToken ct = default) =>
+        public Task<CommentFetchResult> GetRecentCommentsAsync(string accessToken, string channelId, int maxResults = 50, CancellationToken ct = default) =>
             Task.FromResult(new CommentFetchResult(comments, 1));
-        public Task<VideoTitlesResult> GetVideoTitlesAsync(string apiKey, IEnumerable<string> videoIds, CancellationToken ct = default) =>
+        public Task<VideoTitlesResult> GetVideoTitlesAsync(string accessToken, IEnumerable<string> videoIds, CancellationToken ct = default) =>
             Task.FromResult(new VideoTitlesResult(videoIds.Distinct().ToDictionary(v => v, v => $"Title {v}"), 1));
-        public Task<ThreadFetchResult> GetCommentThreadsSinceAsync(string apiKey, string channelId, DateTimeOffset since, int maxPages, CancellationToken ct = default) =>
+        public Task<ThreadFetchResult> GetCommentThreadsSinceAsync(string accessToken, string channelId, DateTimeOffset since, int maxPages, CancellationToken ct = default) =>
             Task.FromResult(new ThreadFetchResult([], 0));
-        public Task<RepliesResult> GetRepliesAsync(string apiKey, string parentCommentId, string parentVideoId, int maxPages, CancellationToken ct = default) =>
+        public Task<RepliesResult> GetRepliesAsync(string accessToken, string parentCommentId, string parentVideoId, int maxPages, CancellationToken ct = default) =>
             Task.FromResult(new RepliesResult([], 0));
     }
 
@@ -108,15 +111,6 @@ public class DedupTests
         public Task PostToResponseUrlAsync(string responseUrl, object payload, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private sealed class FakeKeyProvider : IYouTubeApiKeyProvider
-    {
-        public Task<ApiKeyLease?> AcquireAsync(int unitsNeeded = 1, CancellationToken ct = default) =>
-            Task.FromResult<ApiKeyLease?>(new ApiKeyLease(Guid.NewGuid(), "k", "API", 9999));
-        public Task RecordUsageAsync(Guid apiKeyId, int units, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MarkExhaustedAsync(Guid apiKeyId, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MarkInvalidAsync(Guid apiKeyId, CancellationToken ct = default) => Task.CompletedTask;
-    }
-
     private sealed class NullScheduler : IPollingScheduler
     {
         public void Schedule(Guid mappingId, PollingFrequency frequency) { }
@@ -129,9 +123,9 @@ public class DedupTests
     private sealed class FakeSlackConn : ISlackConnections
     {
         public Task<string?> GetBotTokenAsync(Guid workspaceId, CancellationToken ct = default) => Task.FromResult<string?>("xoxb-test");
-        public Task<string?> GetBotTokenForTeamAsync(string teamId, CancellationToken ct = default) => Task.FromResult<string?>("xoxb-test");
+        public Task<string?> GetBotTokenForTeamAsync(string teamId, string app, CancellationToken ct = default) => Task.FromResult<string?>("xoxb-test");
         public Task<IReadOnlyList<SlackWorkspaceSummary>> ListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<SlackWorkspaceSummary>>([]);
-        public Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, CancellationToken ct = default) => Task.FromResult<SlackWorkspaceSummary?>(null);
+        public Task<SlackWorkspaceSummary?> GetByTeamAsync(string teamId, string app, CancellationToken ct = default) => Task.FromResult<SlackWorkspaceSummary?>(null);
         public Task<Guid> UpsertWorkspaceAsync(SlackWorkspaceWrite write, CancellationToken ct = default) => Task.FromResult(Guid.NewGuid());
         public Task<bool> DeactivateAsync(Guid workspaceId, CancellationToken ct = default) => Task.FromResult(true);
     }

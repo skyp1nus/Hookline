@@ -103,35 +103,49 @@ public static class YouTubeUploadsProviderEndpoints
         var root = doc.RootElement;
         var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
 
+        // url_verification is the HTTP Request-URL handshake only; Socket Mode uses a 'hello' frame instead.
         if (type == "url_verification")
             return Results.Text(root.GetProperty("challenge").GetString() ?? "");
 
-        if (type == "event_callback" && root.TryGetProperty("event", out var ev))
-        {
-            var eventId = root.TryGetProperty("event_id", out var eid) ? eid.GetString() : null;
-            var evType = ev.TryGetProperty("type", out var et) ? et.GetString() : null;
-            var subtype = ev.TryGetProperty("subtype", out var sub) ? sub.GetString() : null;
-
-            var isPlainMessage = evType == "message"
-                && (subtype is null || subtype == "file_share")
-                && !ev.TryGetProperty("bot_id", out _);
-
-            if (isPlainMessage && eventId is not null && await dedup.TryClaimAsync(eventId))
-            {
-                var (thumbUrl, thumbMime) = ExtractThumbnail(ev);
-                var msg = new SlackMessageRef(
-                    eventId,
-                    ev.TryGetProperty("channel", out var c) ? c.GetString() ?? "" : "",
-                    ev.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "",
-                    ev.TryGetProperty("ts", out var ts) ? ts.GetString() ?? "" : "",
-                    ev.TryGetProperty("text", out var x) ? x.GetString() ?? "" : "",
-                    thumbUrl, thumbMime);
-
-                scheduler.Enqueue<SlackIngestService>(s => s.ProcessMessageAsync(msg, CancellationToken.None));
-            }
-        }
+        if (type == "event_callback")
+            await ProcessEventCallbackAsync(root, dedup, scheduler);
 
         return Results.Ok(); // 200 ACK within 3s
+    }
+
+    /// <summary>
+    /// Processes a Slack <c>event_callback</c> envelope whose signature has ALREADY been verified by the
+    /// caller — either the HTTP webhook above, or the dev-only Socket Mode client (whose WSS handshake
+    /// pre-authenticates the frame, so no per-message signature exists to check). A plain human message is
+    /// claimed once via the dedup guard and handed to the durable ingest pipeline. Shared by both inbound
+    /// transports so they behave identically.
+    /// </summary>
+    internal static async Task ProcessEventCallbackAsync(JsonElement root, IDedupService dedup, IJobScheduler scheduler)
+    {
+        if (!root.TryGetProperty("event", out var ev))
+            return;
+
+        var eventId = root.TryGetProperty("event_id", out var eid) ? eid.GetString() : null;
+        var evType = ev.TryGetProperty("type", out var et) ? et.GetString() : null;
+        var subtype = ev.TryGetProperty("subtype", out var sub) ? sub.GetString() : null;
+
+        var isPlainMessage = evType == "message"
+            && (subtype is null || subtype == "file_share")
+            && !ev.TryGetProperty("bot_id", out _);
+
+        if (isPlainMessage && eventId is not null && await dedup.TryClaimAsync(eventId))
+        {
+            var (thumbUrl, thumbMime) = ExtractThumbnail(ev);
+            var msg = new SlackMessageRef(
+                eventId,
+                ev.TryGetProperty("channel", out var c) ? c.GetString() ?? "" : "",
+                ev.TryGetProperty("user", out var u) ? u.GetString() ?? "" : "",
+                ev.TryGetProperty("ts", out var ts) ? ts.GetString() ?? "" : "",
+                ev.TryGetProperty("text", out var x) ? x.GetString() ?? "" : "",
+                thumbUrl, thumbMime);
+
+            scheduler.Enqueue<SlackIngestService>(s => s.ProcessMessageAsync(msg, CancellationToken.None));
+        }
     }
 
     private static async Task<IResult> HandleInteractivityAsync(
@@ -147,11 +161,23 @@ public static class YouTubeUploadsProviderEndpoints
         if (string.IsNullOrEmpty(payloadJson)) return Results.Ok();
 
         using var doc = JsonDocument.Parse(payloadJson);
-        var p = doc.RootElement;
+        await DispatchBlockActionsAsync(doc.RootElement, jobs, cancelFlags, status, slack, ingest, ct);
+        return Results.Ok();
+    }
+
+    /// <summary>
+    /// Routes a Slack <c>block_actions</c> interactivity payload whose signature has ALREADY been verified by
+    /// the caller — the HTTP webhook above, or the dev-only Socket Mode client — to the shared
+    /// cancel/confirm/decline logic. Shared by both inbound transports so they behave identically.
+    /// </summary>
+    internal static async Task DispatchBlockActionsAsync(
+        JsonElement p, IJobService jobs, ICancellationFlags cancelFlags, ISlackStatusService status,
+        SlackClient slack, SlackIngestService ingest, CancellationToken ct)
+    {
         if (p.TryGetProperty("type", out var pt) && pt.GetString() != "block_actions")
-            return Results.Ok();
+            return;
         if (!p.TryGetProperty("actions", out var actions) || actions.GetArrayLength() == 0)
-            return Results.Ok();
+            return;
 
         var action = actions[0];
         var actionId = action.GetProperty("action_id").GetString();
@@ -159,7 +185,7 @@ public static class YouTubeUploadsProviderEndpoints
         var responseUrl = p.TryGetProperty("response_url", out var ru) ? ru.GetString() : null;
 
         if (!Guid.TryParse(value, out var jobId))
-            return Results.Ok();
+            return;
 
         switch (actionId)
         {
@@ -175,8 +201,6 @@ public static class YouTubeUploadsProviderEndpoints
                 await YouTubeUploadsActions.DeclineAsync(jobs, jobId, msg => Respond(slack, responseUrl, msg), ct);
                 break;
         }
-
-        return Results.Ok();
     }
 
     private static Task Respond(SlackClient slack, string? responseUrl, string text)

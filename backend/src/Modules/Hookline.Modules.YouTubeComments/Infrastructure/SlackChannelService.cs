@@ -2,6 +2,7 @@ using Hookline.Modules.YouTubeComments.Domain;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
@@ -21,12 +22,18 @@ public sealed class SlackChannelService(
     YouTubeCommentsDbContext db,
     ISlackClient slack,
     ISlackConnections slackConnections,
-    ICommentsAudit audit)
+    ICommentsAudit audit,
+    ILogger<SlackChannelService> logger)
 {
-    /// <summary>Lists every connected workspace with the number of channels cached for it.</summary>
+    /// <summary>This module's Slack app key — its bot token lives in its OWN row in the shared store,
+    /// separate from the YouTube Uploads app (so a Comments card posts as the Comments bot and its
+    /// "Reject" interactivity routes back to THIS module). The mapping picker reuses it to scope channels.</summary>
+    internal const string AppKey = "youtube-comments";
+
+    /// <summary>Lists this module's connected workspaces with the number of channels cached for each.</summary>
     public async Task<SlackWorkspaceDto[]> ListWorkspacesAsync(CancellationToken ct = default)
     {
-        var workspaces = await slackConnections.ListAsync(ct);
+        var workspaces = (await slackConnections.ListAsync(ct)).Where(w => w.App == AppKey);
         var counts = await db.SlackChannels
             .AsNoTracking()
             .GroupBy(c => c.WorkspaceId)
@@ -48,6 +55,7 @@ public sealed class SlackChannelService(
         var oauth = await slack.ExchangeCodeAsync(code, redirectUri, ct);
 
         var workspaceId = await slackConnections.UpsertWorkspaceAsync(new SlackWorkspaceWrite(
+            App: AppKey,
             TeamId: oauth.TeamId,
             TeamName: oauth.TeamName,
             BotToken: oauth.AccessToken,
@@ -85,6 +93,35 @@ public sealed class SlackChannelService(
 
         await SyncChannelsAsync(workspaceId, botToken, ct);
         return await ListChannelsAsync(workspaceId, ct);
+    }
+
+    /// <summary>
+    /// Best-effort re-sync of EVERY active workspace's channel cache, returning the full cached set. The
+    /// mapping picker reads this module-local cache, which is otherwise only filled on the module's own Slack
+    /// OAuth connect — but Slack is connected through the SHARED Connections area, which never touches it. The
+    /// Add-mapping dialog fires this on open so the picker fills. One workspace's sync failure (revoked token,
+    /// Slack outage) is logged and skipped, never aborting the rest. Each workspace's bot token is resolved
+    /// from the shared store inside <see cref="RefreshChannelsAsync"/>.
+    /// </summary>
+    public async Task<SlackChannelDto[]> RefreshAllChannelsAsync(CancellationToken ct = default)
+    {
+        foreach (var w in (await slackConnections.ListAsync(ct)).Where(w => w.IsActive))
+        {
+            try
+            {
+                await RefreshChannelsAsync(w.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Slack channel refresh failed for workspace {Workspace}", w.Id);
+            }
+        }
+
+        return await db.SlackChannels
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .Select(c => new SlackChannelDto(c.Id, c.SlackChannelId, c.Name, c.IsPrivate))
+            .ToArrayAsync(ct);
     }
 
     /// <summary>Disconnects a workspace from the shared store (fans out <c>SlackWorkspaceDisconnected</c>).

@@ -18,7 +18,6 @@ public sealed class ConnectionsDbContext(
 
     public DbSet<SlackWorkspace> SlackWorkspaces => Set<SlackWorkspace>();
     public DbSet<GoogleAccount> GoogleAccounts => Set<GoogleAccount>();
-    public DbSet<YouTubeApiKey> YouTubeApiKeys => Set<YouTubeApiKey>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -27,7 +26,10 @@ public sealed class ConnectionsDbContext(
         var slack = model.Entity<SlackWorkspace>();
         slack.ToTable("slack_workspaces");
         slack.HasKey(w => w.Id);
-        slack.HasIndex(w => w.TeamId).IsUnique();
+        // Unique per (team, app): each tool is its own Slack app, so the same team holds one row + bot
+        // token per app (was unique on team_id alone, which collapsed two apps onto one token).
+        slack.HasIndex(w => new { w.TeamId, w.App }).IsUnique();
+        slack.Property(w => w.App).IsRequired().HasMaxLength(40);
         slack.Property(w => w.TeamId).IsRequired().HasMaxLength(64);
         slack.Property(w => w.TeamName).HasMaxLength(200);
         slack.Property(w => w.BotTokenEncrypted).IsEncrypted(protector);
@@ -40,12 +42,5 @@ public sealed class ConnectionsDbContext(
         google.Property(g => g.ChannelId).HasMaxLength(64);
         google.Property(g => g.RefreshTokenEncrypted).IsEncrypted(protector);
         google.HasIndex(g => g.ChannelId);
-
-        var key = model.Entity<YouTubeApiKey>();
-        key.ToTable("api_keys");
-        key.HasKey(k => k.Id);
-        key.Property(k => k.Name).IsRequired().HasMaxLength(120);
-        key.Property(k => k.KeyHint).HasMaxLength(40);
-        key.Property(k => k.ApiKeyEncrypted).IsEncrypted(protector);
     }
 }

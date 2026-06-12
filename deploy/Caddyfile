@@ -6,7 +6,7 @@
 #
 # TLS: the bare public domain as the site address enables Caddy AUTOMATIC HTTPS
 # (ACME / Let's Encrypt). That is the TLS directive — Caddy provisions and renews
-# the certificate for danielhub.dev; no manual cert wiring is needed.
+# the certificate for hookline.danielhub.dev; no manual cert wiring is needed.
 #
 # Routing (arch guide §10/§11 — "critical, do not get this wrong"):
 #   /api/* is the Next.js BFF, NOT the backend. Only the paths external providers
@@ -17,7 +17,7 @@
 #     Hangfire dashboard (admin-gated)      -> /hangfire
 #   Everything else (the app shell + the /api/* BFF) -> frontend.
 
-danielhub.dev {
+hookline.danielhub.dev {
 	encode zstd gzip
 
 	# Backend-direct: provider callbacks/webhooks + the admin Hangfire dashboard.

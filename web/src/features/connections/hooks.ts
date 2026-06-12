@@ -76,6 +76,46 @@ export function useSlackWorkspaces() {
   });
 }
 
+// The Comments tool is a SEPARATE Slack app with its own bot, so its workspaces live under its own
+// module endpoint (the shared store keys rows per (team, app)). Listing/connecting it here is what makes
+// a Comments card post as the Comments bot — and routes its "Reject on YouTube" button back to Comments.
+interface CommentsSlackWorkspaceDto {
+  id: string;
+  teamId: string;
+  teamName: string;
+  isActive: boolean;
+  channelCount: number;
+}
+
+export function useCommentsSlackWorkspaces() {
+  return useQuery({
+    queryKey: ["connections", "slack-comments"],
+    queryFn: async () => {
+      const list = await api.get<CommentsSlackWorkspaceDto[]>("/youtube-comments/slack/workspaces");
+      return list.map(
+        (w): SlackWorkspace => ({
+          id: w.id,
+          name: w.teamName,
+          handle: w.teamId,
+          meta: `${w.channelCount} ${w.channelCount === 1 ? "channel" : "channels"} cached${
+            w.isActive ? "" : " · inactive"
+          }`,
+          active: w.isActive,
+        }),
+      );
+    },
+  });
+}
+
+/** Disconnect a Comments-app Slack workspace (its own row in the shared store). */
+export function useDisconnectCommentsWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/youtube-comments/slack/workspaces/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connections", "slack-comments"] }),
+  });
+}
+
 export function useGoogleAccounts() {
   return useQuery({
     queryKey: ["connections", "google"],
@@ -115,7 +155,7 @@ export function useDisconnectWorkspace() {
   });
 }
 
-/** Disconnect a Google account. Backend returns 409 `account_mapped` if a mapping still uses it. */
+/** Disconnect a Google account. The backend cascades: any channel mapping targeting it is dropped too. */
 export function useDisconnectAccount() {
   const qc = useQueryClient();
   return useMutation({

@@ -107,6 +107,17 @@ export function useUploadMappingOptions(enabled = true) {
   });
 }
 
+/**
+ * Re-sync the Slack channel caches for all active workspaces. The picker reads a module-local cache that is
+ * otherwise only synced on Slack OAuth connect, so the Add-route dialog fires this on open to surface channels
+ * created/joined since. Best-effort on the backend; the options query reads the freshened cache afterwards.
+ */
+export function useRefreshUploadSlackChannels() {
+  return useMutation({
+    mutationFn: () => api.post("/youtube-uploads/slack/refresh-channels"),
+  });
+}
+
 export function useCreateUploadMapping() {
   const qc = useQueryClient();
   return useMutation({
@@ -130,5 +141,41 @@ export function useDeleteUploadMapping() {
   return useMutation({
     mutationFn: (id: string) => api.del(`/youtube-uploads/mappings/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads", "mappings"] }),
+  });
+}
+
+// ── default video settings (studio metadata applied to every upload) ──
+
+export type UploadVisibility = "public" | "unlisted" | "private";
+
+/** Server shape of `/youtube-uploads/settings`. `transferChunkSizeMb` is a transfer knob, not a video setting. */
+export interface UploadSettings {
+  defaultVisibility: UploadVisibility;
+  transferChunkSizeMb: number;
+  madeForKids: boolean;
+  containsSyntheticMedia: boolean;
+}
+
+/** PATCH is partial — send only the video settings the Settings page surfaces. */
+export interface UpdateUploadSettingsInput {
+  defaultVisibility?: UploadVisibility;
+  madeForKids?: boolean;
+  containsSyntheticMedia?: boolean;
+}
+
+export function useUploadSettings() {
+  return useQuery({
+    queryKey: ["uploads", "settings"],
+    queryFn: () => api.get<UploadSettings>("/youtube-uploads/settings"),
+  });
+}
+
+/** Persist a partial change to the default video settings; the response is the full saved state. */
+export function useUpdateUploadSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateUploadSettingsInput) =>
+      api.patch<UploadSettings>("/youtube-uploads/settings", body),
+    onSuccess: (saved) => qc.setQueryData(["uploads", "settings"], saved),
   });
 }

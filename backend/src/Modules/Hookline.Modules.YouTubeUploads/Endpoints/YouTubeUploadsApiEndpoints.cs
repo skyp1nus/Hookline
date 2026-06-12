@@ -149,6 +149,11 @@ public static class YouTubeUploadsApiEndpoints
 
         g.MapGet("/slack/channels", async (SlackChannelService ws, CancellationToken ct) =>
             Results.Ok(await ws.ListAllMemberChannelsAsync(ct)));
+
+        // Freshen every active workspace's channel cache on demand (the Add-route picker calls this on open so
+        // newly created/joined channels show without reconnecting Slack). The GET above stays a pure read.
+        g.MapPost("/slack/refresh-channels", async (SlackChannelService ws, CancellationToken ct) =>
+            Results.Ok(await ws.RefreshAllActiveWorkspacesAsync(ct)));
     }
 
     // ── Google projects + accounts ──
@@ -199,12 +204,11 @@ public static class YouTubeUploadsApiEndpoints
             return Results.Ok(result);
         });
 
-        g.MapDelete("/google/accounts/{id:guid}", async (Guid id, GoogleAccountsService google, ChannelMappingService mappings, CancellationToken ct) =>
-        {
-            if (await mappings.IsAccountMappedAsync(id, ct))
-                return Results.Conflict(new { error = "account_mapped" });
-            return await google.DeleteAccountAsync(id, ct) ? Results.NoContent() : Results.NotFound();
-        });
+        // Disconnect always proceeds: DeleteAccountAsync publishes GoogleAccountDisconnected, whose handler
+        // deactivates the account↔project binding and drops every channel mapping that targets it. No
+        // pre-check — the cascade severs the mappings, so a still-mapped account isn't a refusal.
+        g.MapDelete("/google/accounts/{id:guid}", async (Guid id, GoogleAccountsService google, CancellationToken ct) =>
+            await google.DeleteAccountAsync(id, ct) ? Results.NoContent() : Results.NotFound());
     }
 
     // ── channel→account mappings (admin shape) ──

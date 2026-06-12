@@ -140,7 +140,7 @@ public sealed class CommentModerationService(
             return new ModerationResult(ModerationOutcome.NotConnected,
                 "Comment removal is unavailable — the Google credentials provider is not loaded.");
 
-        var credential = await _channelCredentials.GetModerationCredentialAsync(youtubeChannelId, ct);
+        var credential = await _channelCredentials.GetChannelCredentialAsync(youtubeChannelId, ct);
         if (credential is null)
         {
             await LogAsync(AuditLevel.Warning, commentId, youtubeChannelId, actor,
