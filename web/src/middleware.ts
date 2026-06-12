@@ -27,5 +27,11 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  // Skip the auth wall for API, Next internals, and any static file (has an extension):
+  // otherwise public assets like /hookline-icon.png and the App-Router /icon.png favicons
+  // get 307'd to /login, which also breaks /_next/image (the optimizer fetches the source
+  // asset internally and receives the login HTML instead of an image -> 400).
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff2?|ttf)).*)",
+  ],
 };
