@@ -59,8 +59,11 @@ public sealed class SlackChannelService(
             .Select(g => new { WorkspaceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.WorkspaceId, x => x.Count, ct);
 
+        // Only surface active workspaces. Disconnect soft-deactivates the row (DeactivateAsync fans out
+        // SlackWorkspaceDisconnected for dependent cleanup); the deactivated row is kept for audit/history
+        // but must not linger as an "Inactive" card in the UI.
         return list
-            .OrderByDescending(w => w.IsActive)
+            .Where(w => w.IsActive)
             .Select(w => new SlackWorkspaceDto(
                 w.Id, w.TeamId, w.TeamName, null, w.IsActive, DateTimeOffset.MinValue,
                 counts.GetValueOrDefault(w.Id)))
