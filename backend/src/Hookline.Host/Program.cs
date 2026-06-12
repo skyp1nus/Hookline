@@ -80,6 +80,7 @@ try
 
     app.MapHooklineAuthEndpoints();
     app.MapHooklineSystemEndpoints();
+    app.MapHooklineOverviewEndpoints();
 
     app.Run();
 }

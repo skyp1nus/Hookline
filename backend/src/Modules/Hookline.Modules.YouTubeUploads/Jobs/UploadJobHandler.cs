@@ -205,7 +205,7 @@ public sealed class UploadJobHandler(
             progress.Remove(job.Id);
 
             // Custom thumbnail is best-effort and runs AFTER the video exists — it must never fail the job.
-            var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, ct);
+            var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, reservedProjectId.Value, ct);
             await NotifyAsync(job, $":white_check_mark: Uploaded *{job.Title}* (private) → {result.Url}{thumbNote}");
             await status.RefreshQueueAsync(ct);
         }
@@ -296,7 +296,7 @@ public sealed class UploadJobHandler(
 
     /// <summary>Best-effort custom thumbnail. The video already exists when this runs, so ANY failure is
     /// non-fatal — we log, never fail the job, and return a short suffix for the Slack success line.</summary>
-    private async Task<string> TrySetThumbnailAsync(UploadJob job, YouTubeService ytService, string videoId, CancellationToken ct)
+    private async Task<string> TrySetThumbnailAsync(UploadJob job, YouTubeService ytService, string videoId, Guid projectId, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(job.ThumbnailUrl)) return string.Empty; // no image → auto-frame, no note
         try
@@ -319,6 +319,7 @@ public sealed class UploadJobHandler(
 
             await using var ms = new MemoryStream(bytes);
             await youtube.SetThumbnailAsync(ytService, videoId, ms, job.ThumbnailMimeType, ct);
+            await quota.ChargeUnitsAsync(projectId, 50); // thumbnails.set ≈ 50u against the SEPARATE non-upload unit pool (never the upload bucket)
             return " · thumbnail set";
         }
         catch (Exception ex)

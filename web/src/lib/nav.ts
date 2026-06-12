@@ -77,7 +77,6 @@ const commentsTool: ToolDef = {
   id: "tool-comments",
   label: (p) => p.comments,
   icon: MessageSquare,
-  defaultOpen: true,
   children: [
     { id: "ytc-dashboard", path: "/comments", label: () => "Dashboard", icon: () => MessageSquare, cmdIcon: () => MessageSquare, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Dashboard`, module: "youtube-comments" },
     { id: "ytc-mappings", path: "/comments/mappings", label: () => "Mappings", icon: () => Link2, cmdIcon: () => Link2, cmdGroup: "Pages", cmdLabel: (p) => `${p.comments} · Mappings`, module: "youtube-comments" },

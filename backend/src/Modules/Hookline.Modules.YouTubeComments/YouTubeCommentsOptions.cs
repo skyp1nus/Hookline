@@ -23,11 +23,13 @@ public sealed class YouTubeCommentsOptions
     public string AdminPanelUrl { get; set; } = "http://localhost:3000";
 
     /// <summary>Daily YouTube Data API unit ceiling for the single OAuth project (Google default
-    /// 10000/project/day). It is the denominator of the dashboard's APPROXIMATE quota meter — the
-    /// estimated daily spend (from each active mapping's cadence) is shown against it. ASSUMES ONE
-    /// connected Google project; if a second is ever added this must rise to the SUM across projects.
-    /// Validated on startup to be within <see cref="MinDailyQuotaUnits"/>..<see cref="MaxDailyQuotaUnits"/> —
-    /// a non-positive ceiling would make the estimate meter meaningless.</summary>
+    /// 10000/project/day). It is the DENOMINATOR of the dashboard's quota meter: the numerator is the REAL
+    /// units the poll + reply-sweep jobs metered into the per-PT-day Redis counter today (actual spend, not
+    /// a cadence estimate — the "≈" label only reflects that reply paging makes the running day-total
+    /// approximate). ASSUMES ONE connected Google project; if a second is ever added this must rise to the
+    /// SUM across projects. Validated on startup to be within
+    /// <see cref="MinDailyQuotaUnits"/>..<see cref="MaxDailyQuotaUnits"/> — a non-positive ceiling would
+    /// make the metered percentage (spent ÷ ceiling) meaningless.</summary>
     public int DailyQuotaUnits { get; set; } = 10000;
 
     /// <summary>Lower bound for <see cref="DailyQuotaUnits"/> (a ceiling must be at least one unit).</summary>
@@ -107,9 +109,10 @@ public sealed class YouTubeCommentsOptions
 
 /// <summary>
 /// Validates <see cref="YouTubeCommentsOptions"/> on startup (wired with <c>ValidateOnStart</c>). Today it
-/// guards <see cref="YouTubeCommentsOptions.DailyQuotaUnits"/>: a non-positive ceiling would make the
-/// dashboard's estimated-quota meter (estimated daily spend ÷ ceiling) meaningless, so a misconfiguration
-/// fails the host fast instead of silently producing a broken meter.
+/// guards <see cref="YouTubeCommentsOptions.DailyQuotaUnits"/>: it is the denominator of the dashboard's
+/// metered-quota meter (metered units spent ÷ ceiling), so a non-positive ceiling would make that
+/// percentage meaningless — a misconfiguration fails the host fast instead of silently producing a broken
+/// meter.
 /// </summary>
 public sealed class YouTubeCommentsOptionsValidator : IValidateOptions<YouTubeCommentsOptions>
 {
@@ -120,7 +123,7 @@ public sealed class YouTubeCommentsOptionsValidator : IValidateOptions<YouTubeCo
         {
             return ValidateOptionsResult.Fail(
                 $"YouTubeComments:DailyQuotaUnits must be between {YouTubeCommentsOptions.MinDailyQuotaUnits} and " +
-                $"{YouTubeCommentsOptions.MaxDailyQuotaUnits:N0} (daily YouTube Data API units per key); " +
+                $"{YouTubeCommentsOptions.MaxDailyQuotaUnits:N0} (daily YouTube Data API units for the OAuth project); " +
                 $"got {options.DailyQuotaUnits}.");
         }
 

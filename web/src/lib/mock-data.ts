@@ -26,25 +26,6 @@ export interface StatItem {
   quota?: { used: number; total: number };
 }
 
-export interface ActivityItem {
-  id: number;
-  kind: "upload" | "comment";
-  text: string;
-  meta: string;
-  time: string;
-  status: "done" | "ok" | "failed" | "neutral";
-}
-
-export interface HealthItem {
-  id: string;
-  label: string;
-  icon: string;
-  ok: number;
-  total: number;
-  status: "ok" | "warn" | "down";
-  detail: string;
-}
-
 export interface Job {
   id: string;
   title: string;
@@ -71,26 +52,6 @@ export interface CommentMapping {
   freq: string;
   active: boolean;
   fwd24: number;
-}
-
-export interface NeedsAttentionItem {
-  id: string;
-  severity: Severity;
-  icon: string;
-  tool: string;
-  title: string;
-  detail: string;
-  action: { label: string; route: string };
-}
-
-export interface Metric {
-  id: string;
-  label: string;
-  value: string;
-  context: string;
-  icon: string;
-  foot: string;
-  tone?: "warn" | "danger";
 }
 
 export interface FeedComment {
@@ -175,19 +136,6 @@ export const DATA = {
     { d: "Jun 6", v: 30 }, { d: "Jun 7", v: 37 },
   ],
 
-  activity: [
-    { id: 1, kind: "upload", text: "Uploaded “Q2 product walkthrough.mp4” to YouTube", meta: "YouTube Uploads · #content-drops", time: "2m ago", status: "done" },
-    { id: 2, kind: "comment", text: "Forwarded 14 new comments from Daniel’s Channel", meta: "YouTube Comments · #yt-comments", time: "6m ago", status: "ok" },
-    { id: 3, kind: "upload", text: "Upload failed — YouTube quota exceeded", meta: "YouTube Uploads · #content-drops", time: "21m ago", status: "failed" },
-    { id: 5, kind: "comment", text: "Paused mapping “Side Project → #side-comments”", meta: "YouTube Comments · Mappings", time: "1h ago", status: "neutral" },
-    { id: 6, kind: "upload", text: "Uploaded “Behind the scenes vlog.mov” as private", meta: "YouTube Uploads · #vlog-uploads", time: "2h ago", status: "done" },
-  ] as ActivityItem[],
-
-  health: [
-    { id: "slack", label: "Slack workspaces", icon: "slack", ok: 2, total: 2, status: "ok", detail: "All connected" },
-    { id: "google", label: "Google / YouTube", icon: "youtube", ok: 3, total: 3, status: "ok", detail: "3 accounts linked" },
-  ] as HealthItem[],
-
   jobs: [
     { id: "job_8f21a", title: "Q3 launch teaser — final cut.mp4", status: "uploading", progress: 64, source: "Drive · launch-teaser-final.mp4", sizeMB: 842, target: "Daniel’s Channel", channel: "#content-drops", account: "prod-yt-01", elapsed: 184, eta: 96, by: "Maya R." },
     { id: "job_7d05c", title: "Customer story — Northwind.mov", status: "downloading", progress: 28, source: "Drive · northwind-customer-story.mov", sizeMB: 1240, target: "Daniel’s Channel", channel: "#content-drops", account: "prod-yt-02", elapsed: 47, eta: 210, by: "Daniel C." },
@@ -202,18 +150,6 @@ export const DATA = {
     { id: "m3", channel: "Side Project Co.", channelId: "UC_p2m...7Lz", slack: "#side-comments", freq: "15 min", active: false, fwd24: 0 },
     { id: "m4", channel: "Tutorials by Daniel", channelId: "UC_q4n...1Bd", slack: "#tut-feedback", freq: "5 min", active: true, fwd24: 47 },
   ] as CommentMapping[],
-
-  needsAttention: [
-    { id: "na1", severity: "danger", icon: "circleX", tool: "YouTube Uploads", title: "“Promo cut — spring sale.mov” failed to upload", detail: "YouTube quota exceeded · 21m ago", action: { label: "Retry upload", route: "ytu-queue" } },
-    { id: "na3", severity: "warn", icon: "plug", tool: "Connections", title: "Slack OAuth for Side Project Co. expires in 6 days", detail: "Re-authorize to keep #side-comments forwarding", action: { label: "Re-authorize", route: "conn-slack" } },
-    { id: "na4", severity: "neutral", icon: "pause", tool: "YouTube Comments", title: "Mapping “Side Project → #side-comments” is paused", detail: "Paused 1h ago by Daniel C. · 0 comments forwarded since", action: { label: "Review mapping", route: "ytc-mappings" } },
-  ] as NeedsAttentionItem[],
-
-  metrics: [
-    { id: "fwd", label: "Comments forwarded · today", value: "1,284", context: "across 3 channels → 4 Slack channels", icon: "messageSquare", foot: "Last forward 6m ago" },
-    { id: "upl", label: "Uploads · today", value: "37", context: "34 done · 2 running · 1 failed", icon: "uploadCloud", foot: "2 workers online", tone: "warn" },
-    { id: "auto", label: "Active automations", value: "11", context: "8 comment mappings · 3 upload routes", icon: "zap", foot: "1 paused" },
-  ] as Metric[],
 
   commentStats: [
     { id: "c-fwd", label: "Forwarded · 24h", value: "447", sub: "+18.2%", trend: "up", spark: [40, 55, 48, 62, 70, 65, 88, 96, 110] },

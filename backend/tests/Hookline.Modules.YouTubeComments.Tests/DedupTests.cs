@@ -61,8 +61,11 @@ public class DedupTests
     {
         var creds = new FakeGoogleChannelCredentials();
         creds.Seed(TestChannelId);
+        // redis is null!: the quota-unit meter (RedisKeys.ChargeQuotaUnitsAsync) is best-effort and swallows
+        // any fault, so dedup behaviour is exercised without a Redis stand-in. Metering itself is covered by
+        // QuotaMeterTests. (Mirrors the repo idiom of `new QuotaService(null!, ...)` for non-Redis paths.)
         return new(db, youtube, slack, new IGoogleChannelCredentials[] { creds }, new NullScheduler(),
-            new FakeSlackConn(), new NullAudit(), NullLogger<PollCommentsJob>.Instance);
+            new FakeSlackConn(), new NullAudit(), null!, NullLogger<PollCommentsJob>.Instance);
     }
 
     private const string TestChannelId = "UCxxxxxxxxxxxxxxxxxxxxxx";

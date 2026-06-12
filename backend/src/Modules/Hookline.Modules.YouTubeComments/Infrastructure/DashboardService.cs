@@ -5,12 +5,17 @@ using Hookline.SharedKernel.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using StackExchange.Redis;
+
 namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
 /// <summary>
-/// Aggregated KPIs for the dashboard landing page. The quota figure is an APPROXIMATION computed from
-/// each active mapping's configured cadence (not metered actual usage) against the single OAuth
-/// project's daily ceiling — see <see cref="DashboardService.GetStatsAsync"/>.
+/// Aggregated KPIs for the dashboard landing page. The quota figure (<see cref="EstimatedDailyUnits"/> ÷
+/// <see cref="QuotaCeiling"/>) is now METERED from the REAL YouTube Data API units the poll + reply-sweep
+/// jobs actually spent today (a per-PT-day Redis counter), against the single OAuth project's daily
+/// ceiling — not a cadence estimate. The "≈" label is kept because reply paging makes the running
+/// day-total approximate (a popular thread's reply pages are charged as they happen) — see
+/// <see cref="DashboardService.GetStatsAsync"/>.
 /// </summary>
 public sealed record DashboardStatsDto(
     int ActiveMappings,
@@ -36,17 +41,10 @@ public sealed class DashboardService(
     YouTubeCommentsDbContext db,
     ISlackConnections slackConnections,
     IAuditLogReader auditLog,
+    IConnectionMultiplexer redis,
     IOptions<YouTubeCommentsOptions> options)
 {
     private readonly int _dailyLimit = options.Value.DailyQuotaUnits;
-
-    // Approximate quota cost-per-call (YouTube Data API v3 quota table). A poll issues
-    // commentThreads.list (1u) + videos.list (1u) ≈ 2u. The reply sweep's realized cost varies widely
-    // (paged thread scan + per-popular-comment reply pages), so SweepUnitEstimate is a deliberately
-    // CONSERVATIVE upper guess: the meter should OVER-estimate, never under — better to look near the
-    // 10,000 cap early than to silently blow past it thinking there's headroom.
-    private const int PollUnitCost = 2;
-    private const int SweepUnitEstimate = 30;
 
     /// <summary>Computes the dashboard KPI snapshot in a handful of aggregate queries.</summary>
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken ct = default)
@@ -61,25 +59,11 @@ public sealed class DashboardService(
         var commentsToday = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= startOfTodayPt, ct);
         var commentsLast24h = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since24h, ct);
 
-        // Estimated daily quota: with API keys gone there is no per-key usage ledger, so PROJECT spend
-        // from each active mapping's configured cadence (polls/day × poll cost + sweeps/day × sweep cost).
-        // This is an over-estimating approximation, NOT metered usage — labelled "≈ estimated" in the UI.
-        var cadences = await db.ChannelMappings.AsNoTracking()
-            .Where(m => m.IsActive)
-            .Select(m => new { m.Frequency, m.IncludeReplies, m.ReplySweepFrequency })
-            .ToListAsync(ct);
-
-        long estimatedDailyUnits = 0;
-        foreach (var m in cadences)
-        {
-            var pollsPerDay = 1440 / (int)m.Frequency; // Frequency value is the interval in minutes
-            estimatedDailyUnits += (long)pollsPerDay * PollUnitCost;
-            if (m.IncludeReplies && m.ReplySweepFrequency != ReplyScanFrequency.Off)
-            {
-                var sweepsPerDay = 1440 / (int)m.ReplySweepFrequency; // sweep value is the interval in minutes
-                estimatedDailyUnits += (long)sweepsPerDay * SweepUnitEstimate;
-            }
-        }
+        // Daily quota: the REAL YouTube Data API units the poll + reply-sweep jobs metered into the
+        // per-PT-day counter (RedisKeys.QuotaUnits) — actual spend, not a cadence estimate. Absent key ⇒
+        // 0 (no spend yet today, or a Redis hiccup). The "≈" UI label remains because reply paging makes
+        // the running day-total approximate, not because the number is guessed.
+        long estimatedDailyUnits = await RedisKeys.ReadQuotaUnitsAsync(redis);
 
         // Single OAuth project ⇒ one shared daily ceiling (Google default 10,000). If a SECOND Google
         // project is ever connected, this ceiling must rise to the SUM across projects — today there is
