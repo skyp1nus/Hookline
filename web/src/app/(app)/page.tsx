@@ -8,14 +8,16 @@ import {
   ScrollText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { PageHeading } from "@/components/page-heading";
-import { StatusBadge } from "@/components/status";
+import { StatusBadge, StatusDot } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  type CommentsChannelStat,
   type CommentsOverview,
   type UploadsOverview,
   useOverview,
@@ -26,9 +28,22 @@ import { cn } from "@/lib/utils";
 const numberFmt = new Intl.NumberFormat("en-US");
 const fmt = (n: number) => numberFmt.format(n);
 
+// ── Time-range selector shared by both panels ───────────────────────────────────────────────────────
+
+const PERIODS = [
+  { key: "24h", short: "24h", long: "last 24 hours" },
+  { key: "7d", short: "7d", long: "last 7 days" },
+  { key: "30d", short: "30d", long: "last 30 days" },
+] as const;
+
+type PeriodKey = (typeof PERIODS)[number]["key"];
+
+const periodLong = (p: PeriodKey) => PERIODS.find((x) => x.key === p)!.long;
+
 export default function OverviewPage() {
   const router = useRouter();
   const { data, isLoading, isFetching, refetch } = useOverview();
+  const [period, setPeriod] = useState<PeriodKey>("7d");
 
   const go = (id: RouteId) => router.push(ROUTE_PATH[id] ?? "/");
 
@@ -39,6 +54,7 @@ export default function OverviewPage() {
         description="Live totals across both tools — comments forwarded and removed, uploads by outcome, and today's quota."
         actions={
           <>
+            <PeriodToggle value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
               Refresh
@@ -52,10 +68,52 @@ export default function OverviewPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <CommentsPanel data={data?.comments} loading={isLoading} onMore={() => go("ytc-mappings")} />
-        <UploadsPanel data={data?.uploads} loading={isLoading} onMore={() => go("ytu-history")} />
+        <CommentsPanel
+          data={data?.comments}
+          loading={isLoading}
+          period={period}
+          onMore={() => go("ytc-mappings")}
+        />
+        <UploadsPanel
+          data={data?.uploads}
+          loading={isLoading}
+          period={period}
+          onMore={() => go("ytu-history")}
+        />
       </div>
     </div>
+  );
+}
+
+function PeriodToggle({
+  value,
+  onChange,
+}: {
+  value: PeriodKey;
+  onChange: (v: PeriodKey) => void;
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(v) => v && onChange(v as PeriodKey)}
+      variant="outline"
+      size="sm"
+      spacing={0}
+      aria-label="Time range"
+      className="bg-background"
+    >
+      {PERIODS.map((p) => (
+        <ToggleGroupItem
+          key={p.key}
+          value={p.key}
+          aria-label={p.long}
+          className="px-3 text-[12px] text-muted-foreground data-[state=on]:text-foreground"
+        >
+          {p.short}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
@@ -64,12 +122,24 @@ export default function OverviewPage() {
 function CommentsPanel({
   data,
   loading,
+  period,
   onMore,
 }: {
   data?: CommentsOverview;
   loading: boolean;
+  period: PeriodKey;
   onMore: () => void;
 }) {
+  const win = data
+    ? period === "24h"
+      ? data.window24h
+      : period === "7d"
+        ? data.window7d
+        : data.window30d
+    : undefined;
+
+  const channels = data ? topChannels(data.perChannel, period) : [];
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -86,8 +156,8 @@ function CommentsPanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
-        {loading || !data ? (
-          <PanelSkeleton />
+        {loading || !data || !win ? (
+          <PanelSkeleton tiles={2} />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -100,20 +170,18 @@ function CommentsPanel({
               />
             </div>
 
-            <WindowGrid
-              rows={[
-                { label: "Forwarded", v24: data.window24h.forwarded, v7: data.window7d.forwarded, v30: data.window30d.forwarded },
-                { label: "Removed", v24: data.window24h.removed, v7: data.window7d.removed, v30: data.window30d.removed },
-              ]}
-            />
+            <ActivitySection period={period} cols={2}>
+              <MetricTile label="Forwarded" value={win.forwarded} tone="ok" />
+              <MetricTile label="Removed" value={win.removed} tone="danger" />
+            </ActivitySection>
 
             <div>
-              <SectionLabel>Top channels</SectionLabel>
-              {data.perChannel.length === 0 ? (
-                <EmptyRow>No forwarded comments yet.</EmptyRow>
+              <SectionLabel>Top channels · {periodLong(period)}</SectionLabel>
+              {channels.length === 0 ? (
+                <EmptyRow>No forwarded comments in the {periodLong(period)}.</EmptyRow>
               ) : (
                 <div className="mt-1.5">
-                  {data.perChannel.slice(0, 5).map((c, i) => (
+                  {channels.map((c, i) => (
                     <div
                       key={c.channelTitle}
                       className={cn("flex items-center justify-between py-2", i > 0 && "border-t")}
@@ -121,8 +189,8 @@ function CommentsPanel({
                       <span className="min-w-0 truncate text-[13px] font-medium">{c.channelTitle}</span>
                       <div className="flex shrink-0 items-center gap-2">
                         <span className="mono text-[12.5px]">{fmt(c.forwarded)}</span>
-                        {c.removed30d > 0 && (
-                          <StatusBadge tone="neutral">{fmt(c.removed30d)} removed · 30d</StatusBadge>
+                        {c.removed > 0 && (
+                          <StatusBadge tone="neutral">{fmt(c.removed)} removed</StatusBadge>
                         )}
                       </div>
                     </div>
@@ -137,17 +205,43 @@ function CommentsPanel({
   );
 }
 
+/** Channels ranked by forwarded count within the selected window (rows with no activity dropped). */
+function topChannels(stats: CommentsChannelStat[], period: PeriodKey) {
+  const pick = (c: CommentsChannelStat) =>
+    period === "24h"
+      ? { forwarded: c.forwarded24h, removed: c.removed24h }
+      : period === "7d"
+        ? { forwarded: c.forwarded7d, removed: c.removed7d }
+        : { forwarded: c.forwarded30d, removed: c.removed30d };
+
+  return stats
+    .map((c) => ({ channelTitle: c.channelTitle, ...pick(c) }))
+    .filter((c) => c.forwarded > 0 || c.removed > 0)
+    .sort((a, b) => b.forwarded - a.forwarded)
+    .slice(0, 5);
+}
+
 // ── Uploads panel ─────────────────────────────────────────────────────────────────────────────────
 
 function UploadsPanel({
   data,
   loading,
+  period,
   onMore,
 }: {
   data?: UploadsOverview;
   loading: boolean;
+  period: PeriodKey;
   onMore: () => void;
 }) {
+  const win = data
+    ? period === "24h"
+      ? data.window24h
+      : period === "7d"
+        ? data.window7d
+        : data.window30d
+    : undefined;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -164,8 +258,8 @@ function UploadsPanel({
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">
-        {loading || !data ? (
-          <PanelSkeleton />
+        {loading || !data || !win ? (
+          <PanelSkeleton tiles={3} />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -184,16 +278,14 @@ function UploadsPanel({
               />
             </div>
 
-            <WindowGrid
-              rows={[
-                { label: "Done", v24: data.window24h.done, v7: data.window7d.done, v30: data.window30d.done },
-                { label: "Failed", v24: data.window24h.failed, v7: data.window7d.failed, v30: data.window30d.failed },
-                { label: "Canceled", v24: data.window24h.canceled, v7: data.window7d.canceled, v30: data.window30d.canceled },
-              ]}
-            />
+            <ActivitySection period={period} cols={3}>
+              <MetricTile label="Done" value={win.done} tone="ok" />
+              <MetricTile label="Failed" value={win.failed} tone="danger" />
+              <MetricTile label="Canceled" value={win.canceled} tone="neutral" />
+            </ActivitySection>
 
             <div>
-              <SectionLabel>Top accounts</SectionLabel>
+              <SectionLabel>Top accounts · all time</SectionLabel>
               {data.perAccount.length === 0 ? (
                 <EmptyRow>No uploads yet.</EmptyRow>
               ) : (
@@ -246,33 +338,47 @@ function Stat({
   );
 }
 
-interface WindowRow {
-  label: string;
-  v24: number;
-  v7: number;
-  v30: number;
-}
-
-function WindowGrid({ rows }: { rows: WindowRow[] }) {
+/** Windowed activity block — header reflects the selected range, tiles laid out in `cols` columns. */
+function ActivitySection({
+  period,
+  cols,
+  children,
+}: {
+  period: PeriodKey;
+  cols: 2 | 3;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-5 border-b pb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        <span />
-        <span className="text-right">24h</span>
-        <span className="text-right">7d</span>
-        <span className="text-right">30d</span>
+      <div className="mb-2 flex items-center justify-between">
+        <SectionLabel>Activity</SectionLabel>
+        <span className="text-[11px] font-medium text-muted-foreground">{periodLong(period)}</span>
       </div>
-      {rows.map((r) => (
-        <div
-          key={r.label}
-          className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-5 border-b py-2 last:border-b-0"
-        >
-          <span className="text-[13px] font-medium">{r.label}</span>
-          <span className="mono text-right text-[12.5px] tabular-nums">{fmt(r.v24)}</span>
-          <span className="mono text-right text-[12.5px] tabular-nums">{fmt(r.v7)}</span>
-          <span className="mono text-right text-[12.5px] tabular-nums">{fmt(r.v30)}</span>
-        </div>
-      ))}
+      <div className={cn("grid gap-2.5", cols === 2 ? "grid-cols-2" : "grid-cols-3")}>{children}</div>
+    </div>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  tone?: "ok" | "danger" | "neutral";
+}) {
+  const valueColor =
+    tone === "ok" ? "text-ok" : tone === "danger" ? "text-danger" : "text-foreground";
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <div className="flex items-center gap-1.5">
+        <StatusDot tone={tone} />
+        <span className="text-[11.5px] font-medium text-muted-foreground">{label}</span>
+      </div>
+      <div className={cn("mono mt-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em]", valueColor)}>
+        {fmt(value)}
+      </div>
     </div>
   );
 }
@@ -287,16 +393,16 @@ function EmptyRow({ children }: { children: ReactNode }) {
   return <div className="py-3 text-[12.5px] text-muted-foreground">{children}</div>;
 }
 
-function PanelSkeleton() {
+function PanelSkeleton({ tiles }: { tiles: 2 | 3 }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3">
         <Skeleton className="h-[88px] w-full rounded-lg" />
         <Skeleton className="h-[88px] w-full rounded-lg" />
       </div>
-      <div className="space-y-2.5">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-6 w-full" />
+      <div className={cn("grid gap-2.5", tiles === 2 ? "grid-cols-2" : "grid-cols-3")}>
+        {Array.from({ length: tiles }).map((_, i) => (
+          <Skeleton key={i} className="h-[68px] w-full rounded-lg" />
         ))}
       </div>
       <div className="space-y-2.5">
