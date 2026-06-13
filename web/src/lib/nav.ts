@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Moon,
   Plus,
+  Rocket,
   ScrollText,
   Settings,
 } from "lucide-react";
@@ -27,6 +28,7 @@ export type RouteId =
   | "ytu-settings"
   | "conn-slack"
   | "conn-google"
+  | "setup"
   | "logs"
   | "settings";
 
@@ -99,13 +101,14 @@ const uploadsTool: ToolDef = {
 const slackLeaf: LeafDef = { id: "conn-slack", path: "/connections/slack", label: () => "Slack workspaces", icon: () => SlackIcon, cmdIcon: () => SlackIcon, cmdGroup: "Connections", cmdLabel: () => "Slack workspaces", module: null };
 const googleLeaf: LeafDef = { id: "conn-google", path: "/connections/google", label: (p) => p.account, icon: (p) => p.icon, cmdIcon: (p) => p.icon, cmdGroup: "Connections", cmdLabel: (p) => p.account, module: null };
 
+const setupLeaf: LeafDef = { id: "setup", path: "/system/setup", label: () => "Setup guide", icon: () => Rocket, cmdIcon: () => Rocket, cmdGroup: "System", cmdLabel: () => "Setup guide", module: null };
 const logsLeaf: LeafDef = { id: "logs", path: "/system/logs", label: () => "Logs", icon: () => ScrollText, cmdIcon: () => ScrollText, cmdGroup: "System", cmdLabel: () => "Logs", module: null };
 const settingsLeaf: LeafDef = { id: "settings", path: "/system/settings", label: () => "Settings", icon: () => Settings, cmdIcon: () => Settings, cmdGroup: "System", cmdLabel: () => "Settings", module: null };
 
 const GROUPS: GroupDef[] = [
   { kind: "group", label: "Tools", entries: [commentsTool, uploadsTool] },
   { kind: "group", label: "Connections", entries: [slackLeaf, googleLeaf] },
-  { kind: "group", label: "System", entries: [logsLeaf, settingsLeaf] },
+  { kind: "group", label: "System", entries: [setupLeaf, logsLeaf, settingsLeaf] },
 ];
 
 /** Flat list of every leaf, for path/route lookups. */
@@ -115,6 +118,7 @@ const ALL_LEAVES: LeafDef[] = [
   ...uploadsTool.children,
   slackLeaf,
   googleLeaf,
+  setupLeaf,
   logsLeaf,
   settingsLeaf,
 ];
