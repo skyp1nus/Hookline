@@ -54,6 +54,34 @@ public class SlackTemplateParserTests
     }
 
     [Fact]
+    public void Parse_unwraps_slack_triple_backtick_code_fence()
+    {
+        // Real prod regression: users wrap the whole template in a ```…``` Slack code block, so the
+        // first line arrives as "```Video: <link>". Before the fix the label parsed as "```Video"
+        // (no match) → HasVideo=false → ":x: No Drive video link" and the upload never started.
+        var text = "```Video: <https://drive.google.com/file/d/1A2B3C4D5E6F7G8H9I0J/view?usp=sharing>\n"
+                 + "Tags: promo, june\n"
+                 + "Description: First line of the description.```";
+
+        var r = _parser.Parse(text);
+
+        Assert.True(r.IsUploadTemplate);
+        Assert.True(r.HasVideo);
+        Assert.Equal("1A2B3C4D5E6F7G8H9I0J", r.DriveFileId);
+        Assert.Equal(new[] { "promo", "june" }, r.Tags);
+        Assert.Equal("First line of the description.", r.Description);
+    }
+
+    [Fact]
+    public void Parse_strips_inline_backticks_around_label()
+    {
+        var r = _parser.Parse("`Video`: https://drive.google.com/file/d/1A2B3C4D5E6F7G8H9I0J/view");
+
+        Assert.True(r.HasVideo);
+        Assert.Equal("1A2B3C4D5E6F7G8H9I0J", r.DriveFileId);
+    }
+
+    [Fact]
     public void Parse_description_is_multiline_safe_and_keeps_inner_colons()
     {
         var text = """

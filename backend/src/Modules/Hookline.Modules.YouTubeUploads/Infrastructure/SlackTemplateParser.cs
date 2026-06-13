@@ -37,6 +37,10 @@ public sealed partial class SlackTemplateParser
     public ParsedTemplate Parse(string text)
     {
         text = (text ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+        // Strip Slack triple-backtick code fences. Users routinely wrap the whole template in ```…```,
+        // which would glue "```" onto the first label ("```Video" no longer matches "video") and trail
+        // the closing fence onto the last Description line. Removing the fence markers fixes both.
+        text = text.Replace("```", "");
         var lines = text.Split('\n');
 
         // 1) Description label terminates the single-line region; everything after it is free text.
@@ -69,7 +73,7 @@ public sealed partial class SlackTemplateParser
             var line = raw.Trim();
             var colon = line.IndexOf(':');
             if (colon <= 0) continue;
-            var label = line[..colon].Trim();
+            var label = line[..colon].Trim().Trim('`');
             if (!KnownSingleLineLabels.Contains(label)) continue;
             values[label] = line[(colon + 1)..].Trim();
         }
