@@ -11,7 +11,6 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
 {
     private const int MaxTitleLength = 100;
     private const int MaxDescriptionLength = 5000;
-    private const string DefaultCategoryId = "22"; // People & Blogs
 
     public YouTubeService BuildService(string clientId, string clientSecret, string refreshToken) =>
         new(new BaseClientService.Initializer
@@ -49,13 +48,11 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
         IList<string> tags,
         Action<long> onBytes,
         Action onProcessing,
-        string visibility,
-        bool madeForKids,
-        bool containsSyntheticMedia,
+        UploadSettings settings,
         int chunkSize,
         CancellationToken ct)
     {
-        var video = BuildVideo(title, description, tags, visibility, madeForKids, containsSyntheticMedia);
+        var video = BuildVideo(title, description, tags, settings);
 
         var request = service.Videos.Insert(video, "snippet,status", videoStream, "video/*");
         request.NotifySubscribers = false;
@@ -88,32 +85,39 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
     }
 
     /// <summary>
-    /// Builds the <c>videos.insert</c> resource from the title/description/tags plus the three default
-    /// video settings (Settings page → <see cref="UploadSettingsService"/>). This is the single place the
-    /// persisted settings become a YouTube <see cref="Video"/>; kept separate from the network call so the
-    /// settings→resource mapping is unit-testable without hitting the API.
+    /// Builds the <c>videos.insert</c> resource from the title/description/tags plus the default video
+    /// settings (Settings page → <see cref="UploadSettingsService"/>). This is the single place the persisted
+    /// settings become a YouTube <see cref="Video"/>; kept separate from the network call so the
+    /// settings→resource mapping is unit-testable without hitting the API. Studio "Upload defaults" are
+    /// ignored for API uploads, so every default we want applied is set here explicitly.
     /// </summary>
-    internal static Video BuildVideo(
-        string title, string? description, IList<string> tags,
-        string visibility, bool madeForKids, bool containsSyntheticMedia) =>
-        new()
+    internal static Video BuildVideo(string title, string? description, IList<string> tags, UploadSettings s)
+    {
+        // None ("") on category/language means leave the field unset (null), not blank.
+        var language = NormalizeLanguage(s.Language) is { Length: > 0 } l ? l : null;
+        return new Video
         {
             Snippet = new VideoSnippet
             {
                 Title = NormalizeTitle(title),
                 Description = NormalizeDescription(description),
                 Tags = NormalizeTags(tags),
-                CategoryId = DefaultCategoryId,
+                CategoryId = NormalizeCategoryId(s.CategoryId) is { Length: > 0 } c ? c : null,
+                DefaultLanguage = language,
+                DefaultAudioLanguage = language,
             },
             Status = new VideoStatus
             {
-                PrivacyStatus = NormalizeVisibility(visibility),
+                PrivacyStatus = NormalizeVisibility(s.Visibility),
                 // YouTube COPPA self-declaration: false = "No, not made for kids". madeForKids is read-only.
-                SelfDeclaredMadeForKids = madeForKids,
+                SelfDeclaredMadeForKids = s.MadeForKids,
                 // Altered/synthetic (AI) content disclosure: false = "No". Settable since the Oct-2024 API rev.
-                ContainsSyntheticMedia = containsSyntheticMedia,
+                ContainsSyntheticMedia = s.ContainsSyntheticMedia,
+                // Shows the public like count on the watch page; true = YouTube's own default.
+                PublicStatsViewable = s.PublicStatsViewable,
             },
         };
+    }
 
     /// <summary>
     /// Sets a custom thumbnail on an existing video (<c>thumbnails.set</c>, ~50 units). Best-effort:
@@ -187,4 +191,32 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
         "unlisted" => "unlisted",
         _ => "private",
     };
+
+    // The assignable videoCategory ids that are insertable in the major markets. The Settings picker offers
+    // exactly these; anything outside the set (incl. None) maps to "" so BuildVideo leaves categoryId unset.
+    private static readonly HashSet<string> AllowedCategoryIds =
+    [
+        "1", "2", "10", "15", "17", "19", "20", "22", "23", "24", "25", "26", "27", "28", "29",
+    ];
+
+    /// <summary>The category id if it is in the assignable whitelist; otherwise "" (= don't set categoryId).</summary>
+    public static string NormalizeCategoryId(string? categoryId)
+    {
+        var c = categoryId?.Trim() ?? string.Empty;
+        return AllowedCategoryIds.Contains(c) ? c : string.Empty;
+    }
+
+    // BCP-47 codes the Settings picker offers (snippet.defaultLanguage + defaultAudioLanguage). Exact match —
+    // the picker only ever sends a code from this list, and anything else (incl. None) maps to "" (don't set).
+    private static readonly HashSet<string> AllowedLanguages =
+    [
+        "en", "uk", "ru", "pl", "es", "de", "fr", "pt", "it", "nl", "tr", "ar", "hi", "ja", "ko", "zh-Hans", "zh-Hant",
+    ];
+
+    /// <summary>The language code as-is if it is in the BCP-47 whitelist; otherwise "" (= don't set either language).</summary>
+    public static string NormalizeLanguage(string? language)
+    {
+        var l = language?.Trim() ?? string.Empty;
+        return AllowedLanguages.Contains(l) ? l : string.Empty;
+    }
 }

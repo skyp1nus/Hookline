@@ -190,9 +190,7 @@ public sealed class UploadJobHandler(
                         progress.Set(job.Id, new JobProgress(JobState.Processing, job.BytesTotal, job.BytesTotal, PhaseProcessing));
                         _ = status.UpdateProgressAsync(job.Id);
                     },
-                    uploadSettings.Visibility,
-                    uploadSettings.MadeForKids,
-                    uploadSettings.ContainsSyntheticMedia,
+                    uploadSettings,
                     chunkBytes,
                     ct);
             }
@@ -206,7 +204,8 @@ public sealed class UploadJobHandler(
 
             // Custom thumbnail is best-effort and runs AFTER the video exists — it must never fail the job.
             var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, reservedProjectId.Value, ct);
-            await NotifyAsync(job, $":white_check_mark: Uploaded *{job.Title}* (private) → {result.Url}{thumbNote}");
+            var visibilityLabel = YouTubeUploadService.NormalizeVisibility(uploadSettings.Visibility);
+            await NotifyAsync(job, $":white_check_mark: Uploaded *{job.Title}* ({visibilityLabel}) → {result.Url}{thumbNote}");
             await status.RefreshQueueAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

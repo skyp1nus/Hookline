@@ -9,10 +9,18 @@ import { PageHeading } from "@/components/page-heading";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   useUpdateUploadSettings,
   useUploadSettings,
   type UploadVisibility,
 } from "@/features/uploads/hooks";
+import { YOUTUBE_CATEGORIES, YOUTUBE_LANGUAGES } from "@/features/uploads/youtube-meta";
 import { apiErrorMessage } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -29,19 +37,29 @@ export default function UploadSettingsPage() {
   const [visibility, setVisibility] = useState<UploadVisibility>("private");
   const [kids, setKids] = useState(false);
   const [ai, setAi] = useState(false);
+  // categoryId / language use "" for None (field left unset on the upload).
+  const [category, setCategory] = useState("");
+  const [language, setLanguage] = useState("");
+  const [publicStats, setPublicStats] = useState(true);
 
   useEffect(() => {
     if (!data) return;
     setVisibility(data.defaultVisibility);
     setKids(data.madeForKids);
     setAi(data.containsSyntheticMedia);
+    setCategory(data.categoryId);
+    setLanguage(data.language);
+    setPublicStats(data.publicStatsViewable);
   }, [data]);
 
   const dirty =
     !!data &&
     (visibility !== data.defaultVisibility ||
       kids !== data.madeForKids ||
-      ai !== data.containsSyntheticMedia);
+      ai !== data.containsSyntheticMedia ||
+      category !== data.categoryId ||
+      language !== data.language ||
+      publicStats !== data.publicStatsViewable);
 
   async function save() {
     try {
@@ -49,6 +67,9 @@ export default function UploadSettingsPage() {
         defaultVisibility: visibility,
         madeForKids: kids,
         containsSyntheticMedia: ai,
+        categoryId: category,
+        language,
+        publicStatsViewable: publicStats,
       });
       toast.success("Upload settings saved.");
     } catch (error) {
@@ -104,14 +125,90 @@ export default function UploadSettingsPage() {
             title="Altered or AI content"
             desc="Discloses realistic content that’s been meaningfully altered or generated with AI. Default: No."
             note="Applied only where the YouTube API exposes the disclosure field — otherwise ignored."
-            last
             control={
               <Segmented value={ai} onChange={setAi} disabled={!data} options={YES_NO} />
+            }
+          />
+          <SettingRow
+            title="Category"
+            desc="The YouTube category assigned to every upload (snippet.categoryId). None leaves it unset."
+            control={
+              <MetaSelect
+                value={category}
+                onChange={setCategory}
+                disabled={!data}
+                placeholder="Select category"
+                options={YOUTUBE_CATEGORIES.map((c) => ({ value: c.id, label: c.label }))}
+              />
+            }
+          />
+          <SettingRow
+            title="Video language"
+            desc="Sets both the metadata and audio language (snippet.defaultLanguage + defaultAudioLanguage). None leaves both unset."
+            control={
+              <MetaSelect
+                value={language}
+                onChange={setLanguage}
+                disabled={!data}
+                placeholder="Select language"
+                options={YOUTUBE_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
+              />
+            }
+          />
+          <SettingRow
+            title="Show like counts"
+            desc="Shows the public like count on the watch page (status.publicStatsViewable)."
+            last
+            control={
+              <Segmented
+                value={publicStats}
+                onChange={setPublicStats}
+                disabled={!data}
+                options={YES_NO}
+              />
             }
           />
         </div>
       </Card>
     </div>
+  );
+}
+
+/**
+ * shadcn Select over a None-able list. Radix forbids an empty-string item value, so the "None" item uses the
+ * "none" sentinel and we map "none" ↔ "" at the value/onChange boundary (the form + server use "" for None).
+ */
+function MetaSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Select
+      value={value === "" ? "none" : value}
+      onValueChange={(v) => onChange(v === "none" ? "" : v)}
+      disabled={disabled}
+    >
+      <SelectTrigger className="w-[230px]">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">None</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

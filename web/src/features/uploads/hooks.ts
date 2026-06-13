@@ -148,12 +148,18 @@ export function useDeleteUploadMapping() {
 
 export type UploadVisibility = "public" | "unlisted" | "private";
 
-/** Server shape of `/youtube-uploads/settings`. `transferChunkSizeMb` is a transfer knob, not a video setting. */
+/**
+ * Server shape of `/youtube-uploads/settings`. `transferChunkSizeMb` is a transfer knob, not a video setting.
+ * `categoryId` / `language` use "" to mean None (the field is left unset on the upload).
+ */
 export interface UploadSettings {
   defaultVisibility: UploadVisibility;
   transferChunkSizeMb: number;
   madeForKids: boolean;
   containsSyntheticMedia: boolean;
+  categoryId: string;
+  language: string;
+  publicStatsViewable: boolean;
 }
 
 /** PATCH is partial — send only the video settings the Settings page surfaces. */
@@ -161,6 +167,9 @@ export interface UpdateUploadSettingsInput {
   defaultVisibility?: UploadVisibility;
   madeForKids?: boolean;
   containsSyntheticMedia?: boolean;
+  categoryId?: string;
+  language?: string;
+  publicStatsViewable?: boolean;
 }
 
 export function useUploadSettings() {
