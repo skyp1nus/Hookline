@@ -14,7 +14,7 @@ namespace Hookline.Modules.YouTubeUploads.Endpoints;
 
 public sealed record CreateMappingDto(Guid SlackWorkspaceId, string SlackChannelId, Guid GoogleAccountId);
 public sealed record UpdateMappingDto(bool? Active);
-public sealed record UpdateSettingsDto(string? DefaultVisibility, int? TransferChunkSizeMb, bool? MadeForKids, bool? ContainsSyntheticMedia, string? CategoryId, string? Language, bool? PublicStatsViewable);
+public sealed record UpdateSettingsDto(string? DefaultVisibility, int? TransferChunkSizeMb, bool? MadeForKids, bool? ContainsSyntheticMedia, string? CategoryId, string? Language, bool? PublicStatsViewable, bool? NotifySubscribers);
 public sealed record CreateGoogleProjectDto(string Label, string ClientId, string ClientSecret);
 public sealed record UpdateGoogleProjectDto(string? Label, string? Status);
 
@@ -114,7 +114,7 @@ public static class YouTubeUploadsApiEndpoints
         g.MapGet("/settings", async (UploadSettingsService settings, CancellationToken ct) =>
         {
             var s = await settings.GetUploadSettingsAsync(ct);
-            return Results.Ok(new { defaultVisibility = s.Visibility, transferChunkSizeMb = s.ChunkSizeMb, madeForKids = s.MadeForKids, containsSyntheticMedia = s.ContainsSyntheticMedia, categoryId = s.CategoryId, language = s.Language, publicStatsViewable = s.PublicStatsViewable });
+            return Results.Ok(new { defaultVisibility = s.Visibility, transferChunkSizeMb = s.ChunkSizeMb, madeForKids = s.MadeForKids, containsSyntheticMedia = s.ContainsSyntheticMedia, categoryId = s.CategoryId, language = s.Language, publicStatsViewable = s.PublicStatsViewable, notifySubscribers = s.NotifySubscribers });
         });
 
         g.MapPatch("/settings", async (UpdateSettingsDto dto, UploadSettingsService settings, CancellationToken ct) =>
@@ -127,8 +127,9 @@ public static class YouTubeUploadsApiEndpoints
             var category = dto.CategoryId is null ? cur.CategoryId : YouTubeUploadService.NormalizeCategoryId(dto.CategoryId);
             var language = dto.Language is null ? cur.Language : YouTubeUploadService.NormalizeLanguage(dto.Language);
             var publicStats = dto.PublicStatsViewable ?? cur.PublicStatsViewable;
-            await settings.UpdateUploadSettingsAsync(visibility, chunk, madeForKids, synthetic, category, language, publicStats, ct);
-            return Results.Ok(new { defaultVisibility = visibility, transferChunkSizeMb = chunk, madeForKids, containsSyntheticMedia = synthetic, categoryId = category, language, publicStatsViewable = publicStats });
+            var notify = dto.NotifySubscribers ?? cur.NotifySubscribers;
+            await settings.UpdateUploadSettingsAsync(visibility, chunk, madeForKids, synthetic, notify, category, language, publicStats, ct);
+            return Results.Ok(new { defaultVisibility = visibility, transferChunkSizeMb = chunk, madeForKids, containsSyntheticMedia = synthetic, categoryId = category, language, publicStatsViewable = publicStats, notifySubscribers = notify });
         });
     }
 

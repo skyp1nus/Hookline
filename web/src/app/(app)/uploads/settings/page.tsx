@@ -41,6 +41,7 @@ export default function UploadSettingsPage() {
   const [category, setCategory] = useState("");
   const [language, setLanguage] = useState("");
   const [publicStats, setPublicStats] = useState(false);
+  const [notify, setNotify] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -50,6 +51,7 @@ export default function UploadSettingsPage() {
     setCategory(data.categoryId);
     setLanguage(data.language);
     setPublicStats(data.publicStatsViewable);
+    setNotify(data.notifySubscribers);
   }, [data]);
 
   const dirty =
@@ -59,7 +61,8 @@ export default function UploadSettingsPage() {
       ai !== data.containsSyntheticMedia ||
       category !== data.categoryId ||
       language !== data.language ||
-      publicStats !== data.publicStatsViewable);
+      publicStats !== data.publicStatsViewable ||
+      notify !== data.notifySubscribers);
 
   async function save() {
     try {
@@ -70,6 +73,7 @@ export default function UploadSettingsPage() {
         categoryId: category,
         language,
         publicStatsViewable: publicStats,
+        notifySubscribers: notify,
       });
       toast.success("Upload settings saved.");
     } catch (error) {
@@ -158,7 +162,6 @@ export default function UploadSettingsPage() {
           <SettingRow
             title="Show like counts"
             desc="Shows the public like count on the watch page (status.publicStatsViewable)."
-            last
             control={
               <Segmented
                 value={publicStats}
@@ -167,6 +170,13 @@ export default function UploadSettingsPage() {
                 options={YES_NO}
               />
             }
+          />
+          <SettingRow
+            title="Notify subscribers"
+            desc="Publishes the video to subscribers' feed and sends a new-video notification when it goes public. Default: No."
+            note="Maps to the YouTube API notifySubscribers parameter."
+            last
+            control={<Segmented value={notify} onChange={setNotify} disabled={!data} options={YES_NO} />}
           />
         </div>
       </Card>

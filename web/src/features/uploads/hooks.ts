@@ -160,6 +160,7 @@ export interface UploadSettings {
   categoryId: string;
   language: string;
   publicStatsViewable: boolean;
+  notifySubscribers: boolean;
 }
 
 /** PATCH is partial — send only the video settings the Settings page surfaces. */
@@ -170,6 +171,7 @@ export interface UpdateUploadSettingsInput {
   categoryId?: string;
   language?: string;
   publicStatsViewable?: boolean;
+  notifySubscribers?: boolean;
 }
 
 export function useUploadSettings() {

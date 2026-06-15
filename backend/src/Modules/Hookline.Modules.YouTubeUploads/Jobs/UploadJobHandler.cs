@@ -191,6 +191,7 @@ public sealed class UploadJobHandler(
                         _ = status.UpdateProgressAsync(job.Id);
                     },
                     uploadSettings,
+                    uploadSettings.NotifySubscribers,
                     chunkBytes,
                     ct);
             }

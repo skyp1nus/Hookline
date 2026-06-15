@@ -49,13 +49,14 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
         Action<long> onBytes,
         Action onProcessing,
         UploadSettings settings,
+        bool notifySubscribers,
         int chunkSize,
         CancellationToken ct)
     {
         var video = BuildVideo(title, description, tags, settings);
 
         var request = service.Videos.Insert(video, "snippet,status", videoStream, "video/*");
-        request.NotifySubscribers = false;
+        request.NotifySubscribers = notifySubscribers;
         request.ChunkSize = chunkSize; // fewer resumable-upload requests on large files
 
         string? videoId = null;

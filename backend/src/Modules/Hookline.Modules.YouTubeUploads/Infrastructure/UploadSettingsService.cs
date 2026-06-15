@@ -8,7 +8,7 @@ namespace Hookline.Modules.YouTubeUploads.Infrastructure;
 /// use "" to mean "don't set" (None).</summary>
 public sealed record UploadSettings(
     string Visibility, int ChunkSizeMb, bool MadeForKids, bool ContainsSyntheticMedia,
-    string CategoryId, string Language, bool PublicStatsViewable);
+    string CategoryId, string Language, bool PublicStatsViewable, bool NotifySubscribers);
 
 /// <summary>
 /// Reads/writes the module's upload defaults through the shared <see cref="ISettingsStore"/>
@@ -24,6 +24,7 @@ public sealed class UploadSettingsService(ISettingsStore settings, IOptions<YouT
     private const string KeyCategory = "youtube-uploads:upload:categoryId";
     private const string KeyLanguage = "youtube-uploads:upload:language";
     private const string KeyPublicStats = "youtube-uploads:upload:publicStatsViewable";
+    private const string KeyNotify = "youtube-uploads:upload:notifySubscribers";
 
     public async Task<UploadSettings> GetUploadSettingsAsync(CancellationToken ct = default)
     {
@@ -34,6 +35,7 @@ public sealed class UploadSettingsService(ISettingsStore settings, IOptions<YouT
         var categoryId = await settings.GetAsync(KeyCategory, "", ct);
         var language = await settings.GetAsync(KeyLanguage, "", ct);
         var publicStatsRaw = await settings.GetAsync(KeyPublicStats, "false", ct);
+        var notifyRaw = await settings.GetAsync(KeyNotify, "false", ct);
 
         var chunk = int.TryParse(chunkRaw, out var c) ? c : options.Value.TransferChunkSizeMb;
         // publicStatsViewable defaults to false (like counts hidden) when unset or unparseable —
@@ -46,12 +48,16 @@ public sealed class UploadSettingsService(ISettingsStore settings, IOptions<YouT
             bool.TryParse(synthRaw, out var s) && s,
             categoryId,
             language,
-            publicStats);
+            publicStats,
+            // notifySubscribers defaults to false when unset — preserves the prior hardcoded
+            // request.NotifySubscribers = false behaviour (no subscriber notification / feed publish).
+            bool.TryParse(notifyRaw, out var n) && n);
     }
 
     public async Task UpdateUploadSettingsAsync(
         string visibility, int chunkSizeMb, bool madeForKids, bool containsSyntheticMedia,
-        string categoryId, string language, bool publicStatsViewable, CancellationToken ct = default)
+        bool notifySubscribers, string categoryId, string language, bool publicStatsViewable,
+        CancellationToken ct = default)
     {
         await settings.SetAsync(KeyVisibility, visibility, ct);
         await settings.SetAsync(KeyChunk, chunkSizeMb.ToString(), ct);
@@ -60,5 +66,6 @@ public sealed class UploadSettingsService(ISettingsStore settings, IOptions<YouT
         await settings.SetAsync(KeyCategory, categoryId, ct);
         await settings.SetAsync(KeyLanguage, language, ct);
         await settings.SetAsync(KeyPublicStats, publicStatsViewable.ToString(), ct);
+        await settings.SetAsync(KeyNotify, notifySubscribers.ToString(), ct);
     }
 }

@@ -23,8 +23,9 @@ public sealed class UploadSettingsApplicationTests
     /// <summary>Builds an <see cref="UploadSettings"/> with only the field under test varied (others = defaults).</summary>
     private static UploadSettings Settings(
         string visibility = "private", bool madeForKids = false, bool containsSyntheticMedia = false,
-        string categoryId = "", string language = "", bool publicStatsViewable = false) =>
-        new(visibility, ChunkSizeMb: 64, madeForKids, containsSyntheticMedia, categoryId, language, publicStatsViewable);
+        string categoryId = "", string language = "", bool publicStatsViewable = false,
+        bool notifySubscribers = false) =>
+        new(visibility, ChunkSizeMb: 64, madeForKids, containsSyntheticMedia, categoryId, language, publicStatsViewable, notifySubscribers);
 
     // ── settings → Video resource (the place persisted settings become a YouTube upload) ──
 
@@ -92,7 +93,7 @@ public sealed class UploadSettingsApplicationTests
 
         await svc.UpdateUploadSettingsAsync(
             "public", chunkSizeMb: 64, madeForKids: true, containsSyntheticMedia: true,
-            categoryId: "27", language: "uk", publicStatsViewable: false);
+            notifySubscribers: true, categoryId: "27", language: "uk", publicStatsViewable: false);
         var s = await svc.GetUploadSettingsAsync();
 
         Assert.Equal("public", s.Visibility);
@@ -101,6 +102,7 @@ public sealed class UploadSettingsApplicationTests
         Assert.Equal("27", s.CategoryId);
         Assert.Equal("uk", s.Language);
         Assert.False(s.PublicStatsViewable);
+        Assert.True(s.NotifySubscribers);
     }
 
     [Fact]
@@ -116,6 +118,7 @@ public sealed class UploadSettingsApplicationTests
         Assert.Equal("", s.CategoryId);          // None by default
         Assert.Equal("", s.Language);            // None by default
         Assert.False(s.PublicStatsViewable);     // like counts hidden by default (privacy-first)
+        Assert.False(s.NotifySubscribers);       // no subscriber notification by default (matches prior hardcoded false)
     }
 
     // ── the full chain: persisted settings flow into the uploaded video resource ──
@@ -126,7 +129,7 @@ public sealed class UploadSettingsApplicationTests
         var svc = NewService(out _);
         await svc.UpdateUploadSettingsAsync(
             "unlisted", chunkSizeMb: 64, madeForKids: true, containsSyntheticMedia: true,
-            categoryId: "27", language: "uk", publicStatsViewable: false);
+            notifySubscribers: false, categoryId: "27", language: "uk", publicStatsViewable: false);
 
         // exactly what UploadJobHandler does: read settings, then hand them to the upload builder.
         var s = await svc.GetUploadSettingsAsync();
