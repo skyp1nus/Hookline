@@ -23,7 +23,7 @@ public sealed class UploadSettingsApplicationTests
     /// <summary>Builds an <see cref="UploadSettings"/> with only the field under test varied (others = defaults).</summary>
     private static UploadSettings Settings(
         string visibility = "private", bool madeForKids = false, bool containsSyntheticMedia = false,
-        string categoryId = "", string language = "", bool publicStatsViewable = true) =>
+        string categoryId = "", string language = "", bool publicStatsViewable = false) =>
         new(visibility, ChunkSizeMb: 64, madeForKids, containsSyntheticMedia, categoryId, language, publicStatsViewable);
 
     // ── settings → Video resource (the place persisted settings become a YouTube upload) ──
@@ -115,7 +115,7 @@ public sealed class UploadSettingsApplicationTests
         Assert.False(s.ContainsSyntheticMedia);
         Assert.Equal("", s.CategoryId);          // None by default
         Assert.Equal("", s.Language);            // None by default
-        Assert.True(s.PublicStatsViewable);      // YouTube's own default
+        Assert.False(s.PublicStatsViewable);     // like counts hidden by default (privacy-first)
     }
 
     // ── the full chain: persisted settings flow into the uploaded video resource ──

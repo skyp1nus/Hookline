@@ -33,11 +33,12 @@ public sealed class UploadSettingsService(ISettingsStore settings, IOptions<YouT
         var synthRaw = await settings.GetAsync(KeySynthetic, "false", ct);
         var categoryId = await settings.GetAsync(KeyCategory, "", ct);
         var language = await settings.GetAsync(KeyLanguage, "", ct);
-        var publicStatsRaw = await settings.GetAsync(KeyPublicStats, "true", ct);
+        var publicStatsRaw = await settings.GetAsync(KeyPublicStats, "false", ct);
 
         var chunk = int.TryParse(chunkRaw, out var c) ? c : options.Value.TransferChunkSizeMb;
-        // publicStatsViewable defaults to true (= YouTube's own default) on any unparseable value.
-        var publicStats = !bool.TryParse(publicStatsRaw, out var ps) || ps;
+        // publicStatsViewable defaults to false (like counts hidden) when unset or unparseable —
+        // matches the other declaration toggles, which all default to "No".
+        var publicStats = bool.TryParse(publicStatsRaw, out var ps) && ps;
         return new UploadSettings(
             visibility,
             chunk,

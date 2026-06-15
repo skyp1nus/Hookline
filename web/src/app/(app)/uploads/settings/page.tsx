@@ -40,7 +40,7 @@ export default function UploadSettingsPage() {
   // categoryId / language use "" for None (field left unset on the upload).
   const [category, setCategory] = useState("");
   const [language, setLanguage] = useState("");
-  const [publicStats, setPublicStats] = useState(true);
+  const [publicStats, setPublicStats] = useState(false);
 
   useEffect(() => {
     if (!data) return;
