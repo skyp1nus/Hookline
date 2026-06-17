@@ -27,7 +27,6 @@ public sealed record ParsedTemplate
 public sealed partial class SlackTemplateParser
 {
     private const int MaxTagLength = 100;
-    private const int MaxTagsTotalLength = 500;
 
     private static readonly HashSet<string> KnownSingleLineLabels = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -138,21 +137,15 @@ public sealed partial class SlackTemplateParser
             if (seen.Add(t)) tags.Add(t);
         }
 
-        // YouTube caps the combined tag length (~500 chars). A tag containing whitespace is wrapped
-        // in double quotes by YouTube and those quotes count, so a spaced tag costs length + 2.
-        static int TagCost(string t) => t.Length + (t.Any(char.IsWhiteSpace) ? 2 : 0);
-        var total = tags.Sum(TagCost);
-        if (total > MaxTagsTotalLength)
+        // YouTube measures the SERIALISED tag list against a 500-char limit: tags are comma-joined and
+        // whitespace-containing tags are double-quoted, and both the commas and quotes count. The shared
+        // budget owns that accounting (see YouTubeTagBudget); over the limit we keep the in-order prefix
+        // and drop only from the end, warning the user how many survived.
+        var total = YouTubeTagBudget.TotalCost(tags);
+        if (total > YouTubeTagBudget.MaxTotalChars)
         {
-            var kept = new List<string>();
-            var run = 0;
-            foreach (var t in tags)
-            {
-                if (run + TagCost(t) > MaxTagsTotalLength) break;
-                kept.Add(t);
-                run += TagCost(t);
-            }
-            warnings.Add($"Tags total ~{total} chars exceed YouTube's ~{MaxTagsTotalLength} limit — kept the first {kept.Count}.");
+            var kept = YouTubeTagBudget.Fit(tags);
+            warnings.Add($"Tags total ~{total} chars exceed YouTube's {YouTubeTagBudget.MaxTotalChars}-char limit — kept the first {kept.Count}.");
             tags = kept;
         }
 

@@ -159,30 +159,26 @@ public sealed class YouTubeUploadService(GoogleCredentialFactory factory)
     private static string StripAngleBrackets(string s) =>
         s.Replace("<", string.Empty).Replace(">", string.Empty);
 
-    // YouTube returns invalidTags when a tag holds a '<'/'>' or when the tags' combined length
-    // exceeds ~500 chars. It serialises tags as an array and wraps any tag containing whitespace in
-    // double quotes — those quotes count toward the limit, so a spaced tag costs length + 2. We strip
-    // brackets, trim/dedupe, then keep tags until the quote-aware budget is spent. Margin under 500.
+    // YouTube returns invalidTags when a tag holds a '<'/'>' or when the serialised tag list exceeds its
+    // 500-char limit. We strip brackets, trim, drop empties/dupes and per-tag-cap, then fit to the limit
+    // through the shared budget (which counts commas + quotes — see YouTubeTagBudget). Last-line guard:
+    // the parser already trimmed at ingest, but this also sanitises jobs queued before these fixes.
     private const int MaxTagLength = 100;
-    private const int MaxTagsTotalChars = 480;
 
     internal static IList<string>? NormalizeTags(IEnumerable<string>? tags)
     {
         if (tags is null) return null;
-        var result = new List<string>();
+        var cleaned = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var budget = 0;
         foreach (var raw in tags)
         {
             var t = StripAngleBrackets(raw).Trim();
             if (t.Length > MaxTagLength) t = t[..MaxTagLength].Trim();
             if (t.Length == 0 || !seen.Add(t)) continue;
-            var cost = t.Length + (t.Any(char.IsWhiteSpace) ? 2 : 0);
-            if (budget + cost > MaxTagsTotalChars) break;
-            budget += cost;
-            result.Add(t);
+            cleaned.Add(t);
         }
-        return result.Count > 0 ? result : null;
+        var kept = YouTubeTagBudget.Fit(cleaned);
+        return kept.Count > 0 ? kept : null;
     }
 
     /// <summary>Only YouTube's three privacy values are valid; anything else falls back to private.</summary>
