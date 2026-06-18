@@ -86,4 +86,25 @@ public class AuditAndOptionsTests
             .Validate(null, new YouTubeCommentsOptions { DailyQuotaUnits = units });
         Assert.True(result.Succeeded);
     }
+
+    [Fact]
+    public void Validator_fails_when_retention_enabled_but_rollup_disabled()
+    {
+        // Retention deletes raw rows; without the rollup, long-horizon history would be lost silently.
+        var options = new YouTubeCommentsOptions();
+        options.Retention.Enabled = true;
+        options.Rollup.Enabled = false;
+
+        var result = new YouTubeCommentsOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+    }
+
+    [Fact]
+    public void Validator_accepts_retention_with_rollup_enabled()
+    {
+        // The defaults enable both — the supported configuration.
+        var result = new YouTubeCommentsOptionsValidator().Validate(null, new YouTubeCommentsOptions());
+        Assert.True(result.Succeeded);
+    }
 }

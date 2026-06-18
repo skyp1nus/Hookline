@@ -118,13 +118,30 @@ public static class YouTubeCommentsApiEndpoints
             await slack.DeleteWorkspaceAsync(id, ct) ? Results.NoContent() : Results.NotFound());
     }
 
-    // ── dashboard KPIs + 24h timeline ──
+    // ── dashboard KPIs + detailed stats (activity timeline · moderation breakdown · queue/mapping health) ──
     private static void MapDashboard(RouteGroupBuilder g)
     {
         g.MapGet("/dashboard/stats", async (DashboardService dashboard, CancellationToken ct) =>
             Results.Ok(await dashboard.GetStatsAsync(ct)));
 
-        g.MapGet("/dashboard/comments-timeline", async (DashboardService dashboard, CancellationToken ct) =>
-            Results.Ok(await dashboard.GetCommentsTimelineAsync(ct)));
+        // Forwarded/replies/removed over time. ?range=24h|7d|30d (24h → hourly buckets, 7d/30d → daily).
+        g.MapGet("/dashboard/activity", async (string? range, CommentsStatsService stats, CancellationToken ct) =>
+            Results.Ok(await stats.GetActivityAsync(CommentsStatsService.ParseRange(range), ct)));
+
+        // Moderation outcome split (rejected vs already-gone) + windowed per-moderator leaderboard.
+        g.MapGet("/dashboard/moderation", async (CommentsStatsService stats, CancellationToken ct) =>
+            Results.Ok(await stats.GetModerationAsync(ct)));
+
+        // Delivery-queue backlog + per-mapping freshness/throughput.
+        g.MapGet("/dashboard/health", async (CommentsStatsService stats, CancellationToken ct) =>
+            Results.Ok(await stats.GetHealthAsync(ct)));
+
+        // Engagement analytics (busiest videos, top authors, headline averages) over the captured snapshot.
+        g.MapGet("/dashboard/engagement", async (CommentsStatsService stats, CancellationToken ct) =>
+            Results.Ok(await stats.GetEngagementAsync(ct)));
+
+        // Long-horizon daily history from the durable rollup (survives retention trim). ?days=1..365 (default 90).
+        g.MapGet("/dashboard/history", async (int? days, CommentsStatsService stats, CancellationToken ct) =>
+            Results.Ok(await stats.GetHistoryAsync(CommentsStatsService.ParseHistoryDays(days), ct)));
     }
 }

@@ -76,12 +76,17 @@ public sealed class YouTubeCommentsModule : IModule
         services.AddScoped<DashboardService>();
         // Read-only cross-table aggregate for the host's /api/overview Comments panel.
         services.AddScoped<CommentsOverviewService>();
+        // Read-only detailed-dashboard aggregates (activity timeline, moderation breakdown, queue/mapping health).
+        services.AddScoped<CommentsStatsService>();
+        // Nightly rollup into comment_daily_stats so long-horizon trends survive retention cleanup.
+        services.AddScoped<CommentRollupService>();
 
         // Recurring + enqueued job handlers (Hangfire activates from a per-job DI scope).
         services.AddScoped<PollCommentsJob>();
         services.AddScoped<DeepReplySweepJob>();
         services.AddScoped<DeliveryRetryJob>();
         services.AddScoped<CleanupJob>();
+        services.AddScoped<DailyRollupJob>();
 
         // React to a shared Slack-workspace disconnect (deactivate its mappings + tear down jobs) — guide §5.
         services.AddScoped<IIntegrationEventHandler<SlackWorkspaceDisconnected>, SlackWorkspaceDisconnectedHandler>();

@@ -3,6 +3,7 @@ using System;
 using Hookline.Modules.YouTubeComments.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hookline.Modules.YouTubeComments.Migrations
 {
     [DbContext(typeof(YouTubeCommentsDbContext))]
-    partial class YouTubeCommentsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618112909_AddProcessedCommentEngagement")]
+    partial class AddProcessedCommentEngagement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -94,59 +97,6 @@ namespace Hookline.Modules.YouTubeComments.Migrations
                         .HasDatabaseName("ix_channel_mappings_youtube_channel_id_slack_channel_id");
 
                     b.ToTable("channel_mappings", "youtube_comments");
-                });
-
-            modelBuilder.Entity("Hookline.Modules.YouTubeComments.Domain.CommentDailyStat", b =>
-                {
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date")
-                        .HasColumnName("date");
-
-                    b.Property<Guid>("MappingId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("mapping_id");
-
-                    b.Property<int>("AlreadyGone")
-                        .HasColumnType("integer")
-                        .HasColumnName("already_gone");
-
-                    b.Property<string>("ChannelTitle")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("channel_title");
-
-                    b.Property<int>("EnrichedCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("enriched_count");
-
-                    b.Property<int>("Forwarded")
-                        .HasColumnType("integer")
-                        .HasColumnName("forwarded");
-
-                    b.Property<int>("Rejected")
-                        .HasColumnType("integer")
-                        .HasColumnName("rejected");
-
-                    b.Property<int>("Removed")
-                        .HasColumnType("integer")
-                        .HasColumnName("removed");
-
-                    b.Property<int>("Replies")
-                        .HasColumnType("integer")
-                        .HasColumnName("replies");
-
-                    b.Property<long>("SumLikes")
-                        .HasColumnType("bigint")
-                        .HasColumnName("sum_likes");
-
-                    b.HasKey("Date", "MappingId")
-                        .HasName("pk_comment_daily_stats");
-
-                    b.HasIndex("Date")
-                        .HasDatabaseName("ix_comment_daily_stats_date");
-
-                    b.ToTable("comment_daily_stats", "youtube_comments");
                 });
 
             modelBuilder.Entity("Hookline.Modules.YouTubeComments.Domain.CommentModeration", b =>

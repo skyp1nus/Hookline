@@ -41,6 +41,7 @@ public sealed class YouTubeCommentsOptions
 
     public DeliverySettings Delivery { get; set; } = new();
     public RetentionSettings Retention { get; set; } = new();
+    public RollupSettings Rollup { get; set; } = new();
 
     public sealed class SlackSettings
     {
@@ -105,6 +106,24 @@ public sealed class YouTubeCommentsOptions
         /// <summary>Cron cadence for the cleanup job. Default: daily at 03:00 UTC.</summary>
         public string Cron { get; set; } = "0 3 * * *";
     }
+
+    /// <summary>
+    /// Controls the nightly rollup that archives per-day activity into <c>comment_daily_stats</c> so
+    /// long-horizon trends survive the retention cleanup of the raw rows. Runs BEFORE the cleanup job by
+    /// default (02:30 vs 03:00 UTC), and the cleanup job itself re-rolls the days it is about to delete as a
+    /// belt-and-braces guard against a missed nightly run.
+    /// </summary>
+    public sealed class RollupSettings
+    {
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>Re-roll this many trailing days each run (idempotent), to absorb late deliveries and a
+        /// missed night. Must be comfortably smaller than <see cref="RetentionSettings.ProcessedCommentDays"/>.</summary>
+        public int LookbackDays { get; set; } = 3;
+
+        /// <summary>Cron cadence. Default: daily at 02:30 UTC (ahead of retention cleanup at 03:00).</summary>
+        public string Cron { get; set; } = "30 2 * * *";
+    }
 }
 
 /// <summary>
@@ -125,6 +144,16 @@ public sealed class YouTubeCommentsOptionsValidator : IValidateOptions<YouTubeCo
                 $"YouTubeComments:DailyQuotaUnits must be between {YouTubeCommentsOptions.MinDailyQuotaUnits} and " +
                 $"{YouTubeCommentsOptions.MaxDailyQuotaUnits:N0} (daily YouTube Data API units for the OAuth project); " +
                 $"got {options.DailyQuotaUnits}.");
+        }
+
+        // Retention deletes raw rows; the rollup is what preserves history before they go. Enabling cleanup
+        // WITHOUT the rollup would silently lose long-horizon history, so refuse that combination at boot.
+        if (options.Retention.Enabled && !options.Rollup.Enabled)
+        {
+            return ValidateOptionsResult.Fail(
+                "YouTubeComments:Retention:Enabled requires YouTubeComments:Rollup:Enabled to be true — "
+                + "retention cleanup deletes raw rows, and the rollup archives daily history before they are "
+                + "trimmed. Enable both, or disable retention.");
         }
 
         return ValidateOptionsResult.Success;

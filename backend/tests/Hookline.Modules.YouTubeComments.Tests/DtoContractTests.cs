@@ -38,11 +38,82 @@ public class DtoContractTests
     }
 
     [Fact]
-    public void CommentsTimelinePoint_exposes_bucket_and_numeric_count()
+    public void ActivityPoint_exposes_bucket_and_split_counts()
     {
-        var root = Serialize(new CommentsTimelinePoint(DateTimeOffset.UnixEpoch, 7));
-        AssertHasAll(root, "bucket", "count");
-        Assert.Equal(7, root.GetProperty("count").GetInt32());
+        var root = Serialize(new ActivityPoint(DateTimeOffset.UnixEpoch, Forwarded: 7, Replies: 2, Removed: 1));
+        AssertHasAll(root, "bucket", "forwarded", "replies", "removed");
+        Assert.Equal(7, root.GetProperty("forwarded").GetInt32());
+        Assert.Equal(2, root.GetProperty("replies").GetInt32());
+        Assert.Equal(1, root.GetProperty("removed").GetInt32());
+    }
+
+    [Fact]
+    public void ActivityTimeline_exposes_range_and_points()
+    {
+        var root = Serialize(new ActivityTimelineDto("24h", [new ActivityPoint(DateTimeOffset.UnixEpoch, 1, 0, 0)]));
+        AssertHasAll(root, "range", "points");
+        Assert.Equal("24h", root.GetProperty("range").GetString());
+    }
+
+    [Fact]
+    public void ModerationStats_exposes_outcome_split_and_moderators()
+    {
+        var root = Serialize(new ModerationStatsDto(
+            TotalRemoved: 10, Rejected: 7, AlreadyGone: 3, Removed24h: 1, Removed7d: 4, Removed30d: 9,
+            PerModerator: [new ModeratorStat("@u", "U1", 1, 2, 3, 4)]));
+        AssertHasAll(root,
+            "totalRemoved", "rejected", "alreadyGone", "removed24h", "removed7d", "removed30d", "perModerator");
+        var mod = root.GetProperty("perModerator")[0];
+        AssertHasAll(mod, "name", "slackUserId", "removed24h", "removed7d", "removed30d", "removedAllTime");
+    }
+
+    [Fact]
+    public void CommentsHealth_exposes_delivery_and_mappings()
+    {
+        var root = Serialize(new CommentsHealthDto(
+            new DeliveryHealthDto(Pending: 5, Failing: 2, NearGiveUp: 1, OldestPendingAt: DateTimeOffset.UnixEpoch),
+            [new MappingHealthDto(Guid.NewGuid(), "Channel", "#slack", true, 15, DateTimeOffset.UnixEpoch, null, 3)]));
+        AssertHasAll(root, "delivery", "mappings");
+        AssertHasAll(root.GetProperty("delivery"), "pending", "failing", "nearGiveUp", "oldestPendingAt");
+        AssertHasAll(root.GetProperty("mappings")[0],
+            "mappingId", "channelTitle", "slackChannelName", "isActive", "frequencyMinutes",
+            "lastPolledAt", "lastError", "forwarded24h");
+    }
+
+    [Fact]
+    public void Engagement_exposes_summary_videos_and_authors()
+    {
+        var root = Serialize(new EngagementDto(
+            new EngagementSummary(Captured: 12, AvgLikes: 3.5, AvgCommentLength: 80.2, AvgForwardLatencySeconds: 42),
+            PerVideo: [new VideoStat("V1", "Title", 9, 30)],
+            TopAuthors: [new AuthorStat("@ann", "https://youtube.com/@ann", 5, 11)]));
+        AssertHasAll(root, "summary", "perVideo", "topAuthors");
+        AssertHasAll(root.GetProperty("summary"), "captured", "avgLikes", "avgCommentLength", "avgForwardLatencySeconds");
+        AssertHasAll(root.GetProperty("perVideo")[0], "videoId", "videoTitle", "forwarded", "likes");
+        AssertHasAll(root.GetProperty("topAuthors")[0], "name", "authorChannelUrl", "forwarded", "likes");
+    }
+
+    [Fact]
+    public void History_exposes_days_and_dated_points()
+    {
+        var root = Serialize(new HistoryDto(90, [new HistoryPoint(new DateOnly(2026, 6, 17), 4, 1, 2)]));
+        AssertHasAll(root, "days", "points");
+        var pt = root.GetProperty("points")[0];
+        AssertHasAll(pt, "date", "forwarded", "replies", "removed");
+        // DateOnly serializes as an ISO date string the frontend parses.
+        Assert.Equal("2026-06-17", pt.GetProperty("date").GetString());
+    }
+
+    [Fact]
+    public void CommentsOverview_exposes_reply_split_and_alltime_removed()
+    {
+        var win = new CommentsWindowCounts(Forwarded: 10, Replies: 3, Removed: 2);
+        var root = Serialize(new CommentsOverviewDto(
+            TotalForwarded: 100, TotalReplies: 30, TotalRemoved: 12,
+            Window24h: win, Window7d: win, Window30d: win,
+            PerChannel: [], Quota: new CommentsQuotaDto(1, 2, 3)));
+        AssertHasAll(root, "totalForwarded", "totalReplies", "totalRemoved", "window24h", "window7d", "window30d");
+        AssertHasAll(root.GetProperty("window24h"), "forwarded", "replies", "removed");
     }
 
     [Fact]

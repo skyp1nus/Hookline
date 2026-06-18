@@ -5,13 +5,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 
 import {
+  type ActivityTimeline,
   type AddChannelInput,
-  type CommentsTimelinePoint,
+  type CommentsHealth,
   type ConnectedChannelOption,
   type CreateMappingInput,
   type DashboardStats,
+  type Engagement,
+  type History,
   type MappingDto,
   type MappingOptions,
+  type ModerationStats,
   type UpdateMappingInput,
   type YouTubeChannelDto,
 } from "./types";
@@ -31,12 +35,49 @@ export function useCommentStats() {
   });
 }
 
-// The backend has no per-comment feed endpoint; the "feed" is the 24h comments-processed timeline
-// (24 hourly buckets). A true per-comment feed is a deferred ticket — out of scope for Phase 2.
-export function useCommentsTimeline() {
+// Forwarded/replies/removed over time. `range` selects the window + bucket granularity (24h → hourly,
+// 7d/30d → daily); the key includes it so each range is cached separately.
+export function useCommentsActivity(range: "24h" | "7d" | "30d") {
   return useQuery({
-    queryKey: ["comments", "timeline"],
-    queryFn: () => api.get<CommentsTimelinePoint[]>("/youtube-comments/dashboard/comments-timeline"),
+    queryKey: ["comments", "activity", range],
+    queryFn: () => api.get<ActivityTimeline>(`/youtube-comments/dashboard/activity?range=${range}`),
+    refetchInterval: 30_000,
+  });
+}
+
+/** Moderation outcome split (rejected vs already-gone) + per-moderator leaderboard. */
+export function useCommentsModeration() {
+  return useQuery({
+    queryKey: ["comments", "moderation"],
+    queryFn: () => api.get<ModerationStats>("/youtube-comments/dashboard/moderation"),
+    refetchInterval: 30_000,
+  });
+}
+
+/** Delivery-queue backlog + per-mapping freshness/throughput. */
+export function useCommentsHealth() {
+  return useQuery({
+    queryKey: ["comments", "health"],
+    queryFn: () => api.get<CommentsHealth>("/youtube-comments/dashboard/health"),
+    refetchInterval: 30_000,
+  });
+}
+
+/** Engagement analytics: busiest videos, top authors, headline averages (likes/length/latency). */
+export function useCommentsEngagement() {
+  return useQuery({
+    queryKey: ["comments", "engagement"],
+    queryFn: () => api.get<Engagement>("/youtube-comments/dashboard/engagement"),
+    refetchInterval: 60_000,
+  });
+}
+
+/** Long-horizon daily history from the durable nightly rollup (survives retention trim). */
+export function useCommentsHistory(days = 90) {
+  return useQuery({
+    queryKey: ["comments", "history", days],
+    queryFn: () => api.get<History>(`/youtube-comments/dashboard/history?days=${days}`),
+    refetchInterval: 5 * 60_000,
   });
 }
 

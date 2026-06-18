@@ -96,6 +96,13 @@ public sealed class DeliveryRetryJob(
                     ProcessedAt = now,
                     SlackMessageTs = result.MessageTs,
                     ParentCommentId = row.ParentCommentId,
+                    // Engagement snapshot (Phase B) — sourced from the parked notification payload.
+                    VideoTitle = notification.VideoTitle,
+                    AuthorName = notification.AuthorName,
+                    AuthorChannelUrl = notification.AuthorChannelUrl,
+                    LikeCount = notification.LikeCount,
+                    PublishedAt = notification.PublishedAt,
+                    CommentLength = notification.CommentText?.Length ?? 0,
                 });
                 db.PendingDeliveries.Remove(row);
                 delivered++;

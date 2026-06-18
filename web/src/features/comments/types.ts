@@ -18,10 +18,113 @@ export interface DashboardStats {
   channelCount: number;
 }
 
-/** `CommentsTimelinePoint` — one hour bucket of the 24h timeline. `bucket` is the ISO start of the UTC hour. */
-export interface CommentsTimelinePoint {
+/** `ActivityPoint` — one bucket of the activity timeline. `bucket` is the ISO bucket start (UTC hour for
+ * 24h, UTC day for 7d/30d). `replies` is the reply subset of `forwarded`; `removed` is rejected on YouTube. */
+export interface ActivityPoint {
   bucket: string;
-  count: number;
+  forwarded: number;
+  replies: number;
+  removed: number;
+}
+
+/** `ActivityTimelineDto` — `range` echoes the requested window ("24h" | "7d" | "30d"); `points` is 0-filled. */
+export interface ActivityTimeline {
+  range: string;
+  points: ActivityPoint[];
+}
+
+/** `ModeratorStat` — one Slack moderator's removed-comment counts across windows + all time. */
+export interface ModeratorStat {
+  name: string;
+  slackUserId: string | null;
+  removed24h: number;
+  removed7d: number;
+  removed30d: number;
+  removedAllTime: number;
+}
+
+/** `ModerationStatsDto` — outcome split (rejected vs already-gone) + windowed totals + per-moderator leaderboard. */
+export interface ModerationStats {
+  totalRemoved: number;
+  rejected: number;
+  alreadyGone: number;
+  removed24h: number;
+  removed7d: number;
+  removed30d: number;
+  perModerator: ModeratorStat[];
+}
+
+/** `DeliveryHealthDto` — the durable retry queue's live backlog (dead-lettered rows are dropped, not kept). */
+export interface DeliveryHealth {
+  pending: number;
+  failing: number;
+  nearGiveUp: number;
+  oldestPendingAt: string | null;
+}
+
+/** `MappingHealthDto` — per-mapping freshness + recent throughput. */
+export interface MappingHealth {
+  mappingId: string;
+  channelTitle: string;
+  slackChannelName: string;
+  isActive: boolean;
+  frequencyMinutes: number;
+  lastPolledAt: string | null;
+  lastError: string | null;
+  forwarded24h: number;
+}
+
+/** `CommentsHealthDto` — the operational-health panel: delivery backlog + a row per mapping. */
+export interface CommentsHealth {
+  delivery: DeliveryHealth;
+  mappings: MappingHealth[];
+}
+
+/** `EngagementSummary` — headline figures over the engagement-enriched subset. `captured` is how many
+ * forwarded comments carry the snapshot (rows from before capture are excluded); `avgForwardLatencySeconds`
+ * is null when nothing enriched is in range. */
+export interface EngagementSummary {
+  captured: number;
+  avgLikes: number;
+  avgCommentLength: number;
+  avgForwardLatencySeconds: number | null;
+}
+
+/** `VideoStat` — one video's forwarded volume + total likes. `videoTitle` is null until an enriched row lands. */
+export interface VideoStat {
+  videoId: string;
+  videoTitle: string | null;
+  forwarded: number;
+  likes: number;
+}
+
+/** `AuthorStat` — one author's forwarded volume + total likes (grouped by channel-URL identity). */
+export interface AuthorStat {
+  name: string;
+  authorChannelUrl: string | null;
+  forwarded: number;
+  likes: number;
+}
+
+/** `EngagementDto` — engagement analytics: headline summary, busiest videos, most-forwarded authors. */
+export interface Engagement {
+  summary: EngagementSummary;
+  perVideo: VideoStat[];
+  topAuthors: AuthorStat[];
+}
+
+/** `HistoryPoint` — one rolled-up day. `date` is an ISO date ("yyyy-MM-dd"). */
+export interface HistoryPoint {
+  date: string;
+  forwarded: number;
+  replies: number;
+  removed: number;
+}
+
+/** `HistoryDto` — long-horizon daily history from the durable nightly rollup (survives retention trim). */
+export interface History {
+  days: number;
+  points: HistoryPoint[];
 }
 
 /** `YouTubeChannelDto` — a tracked channel with the count of mappings targeting it. */

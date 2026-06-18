@@ -8,6 +8,8 @@ import { api } from "@/lib/api/client";
 
 export interface CommentsWindowCounts {
   forwarded: number;
+  /** Reply subset of `forwarded` (top-level = forwarded − replies). */
+  replies: number;
   removed: number;
 }
 
@@ -30,6 +32,10 @@ export interface CommentsQuota {
 
 export interface CommentsOverview {
   totalForwarded: number;
+  /** Reply subset of `totalForwarded`. */
+  totalReplies: number;
+  /** All-time removed count (mirrors `totalForwarded`). */
+  totalRemoved: number;
   window24h: CommentsWindowCounts;
   window7d: CommentsWindowCounts;
   window30d: CommentsWindowCounts;

@@ -4,8 +4,9 @@ namespace Hookline.Modules.YouTubeComments.Infrastructure;
 
 // ── Overview panel DTOs (ASP.NET serializes camelCase by default → the TS field names match) ──
 
-/// <summary>Forwarded / removed counts for one rolling window, across the whole Comments tool.</summary>
-public sealed record CommentsWindowCounts(int Forwarded, int Removed);
+/// <summary>Forwarded / removed counts for one rolling window, across the whole Comments tool.
+/// <paramref name="Replies"/> is the reply subset of <paramref name="Forwarded"/> (top-level = Forwarded − Replies).</summary>
+public sealed record CommentsWindowCounts(int Forwarded, int Replies, int Removed);
 
 /// <summary>One monitored channel's contribution to the Comments overview: all-time forwarded plus the
 /// rolling windows, joined ProcessedComments → ChannelMapping → YouTubeChannel.</summary>
@@ -23,9 +24,13 @@ public sealed record CommentsChannelStat(
 public sealed record CommentsQuotaDto(long Used, long Ceiling, double Percent);
 
 /// <summary>The Comments half of the Overview page: all-time + windowed forwarded/removed totals, the
-/// per-channel breakdown, and today's daily quota figure.</summary>
+/// per-channel breakdown, and today's daily quota figure. <paramref name="TotalReplies"/> is the reply
+/// subset of <paramref name="TotalForwarded"/>; <paramref name="TotalRemoved"/> is the all-time removed
+/// count (mirrors the all-time forwarded figure, which previously had no removed counterpart).</summary>
 public sealed record CommentsOverviewDto(
     int TotalForwarded,
+    int TotalReplies,
+    int TotalRemoved,
     CommentsWindowCounts Window24h,
     CommentsWindowCounts Window7d,
     CommentsWindowCounts Window30d,
@@ -49,6 +54,8 @@ public sealed class CommentsOverviewService(YouTubeCommentsDbContext db, Dashboa
         var since30d = now.AddDays(-30);
 
         var totalForwarded = await db.ProcessedComments.AsNoTracking().CountAsync(ct);
+        var totalReplies = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ParentCommentId != null, ct);
+        var totalRemoved = await db.CommentModerations.AsNoTracking().CountAsync(ct);
 
         // ── Forwarded windows, grouped by the owning YouTube channel in ONE query ──
         // ProcessedComments → ChannelMapping (MappingId) → YouTubeChannel. Conditional SUMs collapse the
@@ -126,9 +133,11 @@ public sealed class CommentsOverviewService(YouTubeCommentsDbContext db, Dashboa
             .ToList();
 
         // ── Overall windows: cheap conditional counts straight off each table ──
-        var fwd24h = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since24h, ct);
-        var fwd7d = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since7d, ct);
-        var fwd30d = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since30d, ct);
+        // Forwarded windows pull BOTH the total and its reply subset in one grouped pass per cutoff so the
+        // reply-vs-top-level split costs no extra round-trips.
+        var fwd24h = await ForwardedWindowAsync(since24h, ct);
+        var fwd7d = await ForwardedWindowAsync(since7d, ct);
+        var fwd30d = await ForwardedWindowAsync(since30d, ct);
 
         var rem24h = await db.CommentModerations.AsNoTracking().CountAsync(m => m.CreatedAt >= since24h, ct);
         var rem7d = await db.CommentModerations.AsNoTracking().CountAsync(m => m.CreatedAt >= since7d, ct);
@@ -139,10 +148,21 @@ public sealed class CommentsOverviewService(YouTubeCommentsDbContext db, Dashboa
 
         return new CommentsOverviewDto(
             TotalForwarded: totalForwarded,
-            Window24h: new CommentsWindowCounts(fwd24h, rem24h),
-            Window7d: new CommentsWindowCounts(fwd7d, rem7d),
-            Window30d: new CommentsWindowCounts(fwd30d, rem30d),
+            TotalReplies: totalReplies,
+            TotalRemoved: totalRemoved,
+            Window24h: new CommentsWindowCounts(fwd24h.Forwarded, fwd24h.Replies, rem24h),
+            Window7d: new CommentsWindowCounts(fwd7d.Forwarded, fwd7d.Replies, rem7d),
+            Window30d: new CommentsWindowCounts(fwd30d.Forwarded, fwd30d.Replies, rem30d),
             PerChannel: perChannel,
             Quota: new CommentsQuotaDto(stats.EstimatedDailyUnits, stats.QuotaCeiling, stats.EstimatedPercent));
+    }
+
+    /// <summary>Total forwarded + its reply subset since <paramref name="since"/> (two cheap scalar counts).</summary>
+    private async Task<(int Forwarded, int Replies)> ForwardedWindowAsync(DateTimeOffset since, CancellationToken ct)
+    {
+        var forwarded = await db.ProcessedComments.AsNoTracking().CountAsync(c => c.ProcessedAt >= since, ct);
+        var replies = await db.ProcessedComments.AsNoTracking()
+            .CountAsync(c => c.ProcessedAt >= since && c.ParentCommentId != null, ct);
+        return (forwarded, replies);
     }
 }

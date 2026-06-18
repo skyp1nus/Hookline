@@ -189,6 +189,13 @@ public sealed class DeepReplySweepJob(
                             ProcessedAt = now,
                             SlackMessageTs = result.MessageTs,
                             ParentCommentId = reply.ParentCommentId,
+                            // Engagement snapshot (Phase B) captured at forward time.
+                            VideoTitle = title,
+                            AuthorName = reply.AuthorName,
+                            AuthorChannelUrl = reply.AuthorChannelUrl,
+                            LikeCount = reply.LikeCount,
+                            PublishedAt = reply.PublishedAt,
+                            CommentLength = reply.Text?.Length ?? 0,
                         });
                         postedCount++;
                     }

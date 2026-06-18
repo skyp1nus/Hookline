@@ -29,9 +29,6 @@ public sealed record DashboardStatsDto(
     int ConnectedWorkspaces,
     int ChannelCount);
 
-/// <summary>A single hour bucket in the "comments processed" timeline. <paramref name="Bucket"/> is the start of the UTC hour.</summary>
-public sealed record CommentsTimelinePoint(DateTimeOffset Bucket, int Count);
-
 /// <summary>
 /// Read-only aggregation over the operational tables for the dashboard. "Today" boundaries use Pacific
 /// Time (matching YouTube's quota reset); rolling windows use the last 24 hours from
@@ -94,38 +91,5 @@ public sealed class DashboardService(
             ErrorsLast24h: errorsLast24h,
             ConnectedWorkspaces: connectedWorkspaces,
             ChannelCount: channelCount);
-    }
-
-    /// <summary>
-    /// Returns 24 consecutive hourly buckets covering the last 24 hours, aligned to the start of each
-    /// UTC hour. Every bucket is present (count 0 where no comments fell in it), ordered ascending.
-    /// </summary>
-    public async Task<CommentsTimelinePoint[]> GetCommentsTimelineAsync(CancellationToken ct = default)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var currentHourStart = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, 0, 0, TimeSpan.Zero);
-        var earliest = currentHourStart.AddHours(-23);
-
-        var timestamps = await db.ProcessedComments.AsNoTracking()
-            .Where(c => c.ProcessedAt >= earliest)
-            .Select(c => c.ProcessedAt)
-            .ToListAsync(ct);
-
-        var counts = new Dictionary<DateTimeOffset, int>(24);
-        foreach (var ts in timestamps)
-        {
-            var utc = ts.ToUniversalTime();
-            var bucket = new DateTimeOffset(utc.Year, utc.Month, utc.Day, utc.Hour, 0, 0, TimeSpan.Zero);
-            counts[bucket] = counts.GetValueOrDefault(bucket) + 1;
-        }
-
-        var points = new CommentsTimelinePoint[24];
-        for (var i = 0; i < 24; i++)
-        {
-            var bucket = earliest.AddHours(i);
-            points[i] = new CommentsTimelinePoint(bucket, counts.GetValueOrDefault(bucket));
-        }
-
-        return points;
     }
 }

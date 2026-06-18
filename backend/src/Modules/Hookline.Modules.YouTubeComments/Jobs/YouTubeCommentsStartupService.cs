@@ -23,6 +23,7 @@ public sealed class YouTubeCommentsStartupService(
 {
     private const string DeliveryJobId = "ytc:delivery-retry";
     private const string RetentionJobId = "ytc:retention-cleanup";
+    private const string RollupJobId = "ytc:daily-rollup";
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -49,6 +50,16 @@ public sealed class YouTubeCommentsStartupService(
             else
             {
                 scheduler.RemoveRecurring(DeliveryJobId);
+            }
+
+            if (o.Rollup.Enabled)
+            {
+                scheduler.AddOrUpdateRecurring<DailyRollupJob>(RollupJobId, j => j.RunAsync(CancellationToken.None), o.Rollup.Cron);
+                logger.LogInformation("Daily rollup scheduled ({Cron})", o.Rollup.Cron);
+            }
+            else
+            {
+                scheduler.RemoveRecurring(RollupJobId);
             }
 
             if (o.Retention.Enabled)

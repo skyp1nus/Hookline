@@ -187,6 +187,13 @@ public sealed class PollCommentsJob(
                             ProcessedAt = now,
                             SlackMessageTs = result.MessageTs,
                             ParentCommentId = comment.ParentCommentId,
+                            // Engagement snapshot (Phase B) captured at forward time.
+                            VideoTitle = title,
+                            AuthorName = comment.AuthorName,
+                            AuthorChannelUrl = comment.AuthorChannelUrl,
+                            LikeCount = comment.LikeCount,
+                            PublishedAt = comment.PublishedAt,
+                            CommentLength = comment.Text?.Length ?? 0,
                         });
                         if (!comment.IsReply && result.MessageTs is not null)
                             tsThisRun[comment.CommentId] = result.MessageTs;

@@ -72,7 +72,7 @@ export default function OverviewPage() {
           data={data?.comments}
           loading={isLoading}
           period={period}
-          onMore={() => go("ytc-mappings")}
+          onMore={() => go("ytc-dashboard")}
         />
         <UploadsPanel
           data={data?.uploads}
@@ -151,7 +151,7 @@ function CommentsPanel({
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={onMore}>
-          Mappings
+          Dashboard
           <ChevronRight className="size-3.5" />
         </Button>
       </CardHeader>
@@ -161,7 +161,11 @@ function CommentsPanel({
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <Stat label="Forwarded · all time" value={fmt(data.totalForwarded)} />
+              <Stat
+                label="Forwarded · all time"
+                value={fmt(data.totalForwarded)}
+                sub={`${fmt(data.totalReplies)} replies · ${fmt(data.totalRemoved)} removed`}
+              />
               <Stat
                 label="Quota · today"
                 value={`${data.quota.percent}%`}
@@ -170,8 +174,9 @@ function CommentsPanel({
               />
             </div>
 
-            <ActivitySection period={period} cols={2}>
+            <ActivitySection period={period} cols={3}>
               <MetricTile label="Forwarded" value={win.forwarded} tone="ok" />
+              <MetricTile label="Replies" value={win.replies} tone="neutral" />
               <MetricTile label="Removed" value={win.removed} tone="danger" />
             </ActivitySection>
 

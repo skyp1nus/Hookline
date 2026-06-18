@@ -25,6 +25,7 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
     public DbSet<ProcessedComment> ProcessedComments => Set<ProcessedComment>();
     public DbSet<PendingDelivery> PendingDeliveries => Set<PendingDelivery>();
     public DbSet<CommentModeration> CommentModerations => Set<CommentModeration>();
+    public DbSet<CommentDailyStat> CommentDailyStats => Set<CommentDailyStat>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -72,6 +73,10 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
         pc.Property(x => x.VideoId).IsRequired().HasMaxLength(40);
         pc.Property(x => x.SlackMessageTs).HasMaxLength(40);
         pc.Property(x => x.ParentCommentId).HasMaxLength(100);
+        // Engagement snapshot (Phase B) — all nullable; titles/names capped to keep the row lean.
+        pc.Property(x => x.VideoTitle).HasMaxLength(200);
+        pc.Property(x => x.AuthorName).HasMaxLength(200);
+        pc.Property(x => x.AuthorChannelUrl).HasMaxLength(300);
         pc.HasIndex(x => x.ProcessedAt);
         pc.HasOne(x => x.Mapping)
             .WithMany(x => x.ProcessedComments)
@@ -107,6 +112,15 @@ public sealed class YouTubeCommentsDbContext(DbContextOptions<YouTubeCommentsDbC
             .WithMany()
             .HasForeignKey(x => x.MappingId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        var ds = b.Entity<CommentDailyStat>();
+        ds.ToTable("comment_daily_stats");
+        // Composite PK (day, mapping). Intentionally NO FK to channel_mappings: the rollup must outlive
+        // the mapping/channel it summarizes (history survives deletion), so MappingId is a plain value and
+        // ChannelTitle is denormalized at rollup time.
+        ds.HasKey(x => new { x.Date, x.MappingId });
+        ds.Property(x => x.ChannelTitle).IsRequired().HasMaxLength(200);
+        ds.HasIndex(x => x.Date);
     }
 }
 
