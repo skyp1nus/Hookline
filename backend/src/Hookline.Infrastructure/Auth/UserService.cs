@@ -41,7 +41,8 @@ public sealed class UserService(
         if (string.IsNullOrWhiteSpace(password))
         {
             password = GenerateBreakGlassPassword();
-            logger.LogWarning("BOOTSTRAP_ADMIN_PASSWORD (generated, capture now): {Password}", password);
+            Console.Error.WriteLine($"BOOTSTRAP_ADMIN_PASSWORD (generated, capture now): {password}");
+            logger.LogWarning("Generated bootstrap admin password — capture from stderr. It will not be shown again.");
         }
 
         db.Users.Add(new User

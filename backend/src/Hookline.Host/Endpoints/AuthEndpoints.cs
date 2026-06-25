@@ -17,8 +17,7 @@ public static class AuthEndpoints
         group.MapGet("/bootstrap-state", async (UserService users) =>
         {
             var ownerExists = await users.OwnerExistsAsync();
-            var all = await users.ListAsync();
-            return Results.Ok(new { ownerExists, userCount = all.Count });
+            return Results.Ok(new { ownerExists });
         });
 
         // The BFF validates here, then mints the session cookie + identity assertion.

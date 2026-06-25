@@ -13,7 +13,6 @@ export interface Me {
 
 export interface BootstrapState {
   ownerExists: boolean;
-  userCount: number;
 }
 
 /** Current user, or null when unauthenticated (401 is not an error here). */
