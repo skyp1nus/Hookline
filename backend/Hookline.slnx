@@ -16,5 +16,6 @@
     <Project Path="tests/Hookline.Infrastructure.Tests/Hookline.Infrastructure.Tests.csproj" />
     <Project Path="tests/Hookline.Modules.YouTubeUploads.Tests/Hookline.Modules.YouTubeUploads.Tests.csproj" />
     <Project Path="tests/Hookline.Modules.YouTubeComments.Tests/Hookline.Modules.YouTubeComments.Tests.csproj" />
+    <Project Path="tests/Hookline.SharedKernel.Tests/Hookline.SharedKernel.Tests.csproj" />
   </Folder>
 </Solution>
