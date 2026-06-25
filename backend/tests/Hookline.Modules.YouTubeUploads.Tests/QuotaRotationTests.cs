@@ -2,6 +2,7 @@ using Hookline.Modules.YouTubeUploads;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
 using Hookline.Modules.YouTubeUploads.Jobs;
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace Hookline.Modules.YouTubeUploads.Tests;
@@ -55,7 +56,7 @@ public class QuotaRotationTests
     public async Task GetStatusNullProjectReportsZeroCap()
     {
         // An unbound account (null project) must not look like it has a full daily quota available.
-        var quota = new QuotaService(null!, Options.Create(new YouTubeUploadsOptions()));
+        var quota = new QuotaService(null!, Options.Create(new YouTubeUploadsOptions()), NullLogger<QuotaService>.Instance);
         var status = await quota.GetStatusAsync(null);
         Assert.Equal(0, status.UploadLimit);
         Assert.Equal(0, status.CapUnits);

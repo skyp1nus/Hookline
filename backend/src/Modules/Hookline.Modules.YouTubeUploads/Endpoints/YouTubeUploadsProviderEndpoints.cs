@@ -212,7 +212,7 @@ public static class YouTubeUploadsProviderEndpoints
     private static void MapGoogleEndpoints(IEndpointRouteBuilder app)
     {
         app.MapGet("/google/youtube-uploads/oauth/start", async (
-            Guid? projectId, GoogleAccountsService oauth, IOptions<YouTubeUploadsOptions> opt, HttpContext http, CancellationToken ct) =>
+            Guid? projectId, GoogleAccountsService oauth, IOptions<YouTubeUploadsOptions> opt, HttpContext http, ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             var panel = opt.Value.AdminPanelUrl.TrimEnd('/');
             if (projectId is null)
@@ -221,7 +221,11 @@ public static class YouTubeUploadsProviderEndpoints
             var state = GenerateState();
             string consentUrl;
             try { consentUrl = await oauth.BuildConsentUrlAsync(projectId.Value, state, ct); }
-            catch (Exception ex) { return Results.Redirect($"{panel}/connections/google?error={Uri.EscapeDataString(ex.Message)}"); }
+            catch (Exception ex)
+            {
+                loggerFactory.CreateLogger("YouTubeUploads.Google.OAuth").LogError(ex, "Google OAuth start failed for project {ProjectId}", projectId.Value);
+                return Results.Redirect($"{panel}/connections/google?error={Uri.EscapeDataString(ex.Message)}");
+            }
 
             http.Response.Cookies.Append(GoogleStateCookie, state, StateCookie(http));
             http.Response.Cookies.Append(GoogleClientCookie, projectId.Value.ToString(), StateCookie(http));

@@ -1,5 +1,7 @@
 using Hookline.SharedKernel.Caching;
 
+using Microsoft.Extensions.Logging;
+
 using StackExchange.Redis;
 
 namespace Hookline.Infrastructure.Caching;
@@ -10,7 +12,7 @@ namespace Hookline.Infrastructure.Caching;
 /// runs <c>noeviction</c> but every app key self-expires, so a missed purge only delays cleanup — it must
 /// never fail a data reset).
 /// </summary>
-public sealed class RedisCachePurge(IConnectionMultiplexer redis) : ICachePurge
+public sealed class RedisCachePurge(IConnectionMultiplexer redis, ILogger<RedisCachePurge> logger) : ICachePurge
 {
     public async Task<long> PurgeByPrefixAsync(string prefix, CancellationToken ct = default)
     {
@@ -41,9 +43,10 @@ public sealed class RedisCachePurge(IConnectionMultiplexer redis) : ICachePurge
                 }
             }
         }
-        catch (Exception) when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             // Best-effort: a cache outage must never fail the surrounding data reset.
+            logger.LogWarning(ex, "Cache purge failed for prefix '{Prefix}'", prefix);
         }
 
         return removed;

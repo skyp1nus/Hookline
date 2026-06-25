@@ -2,6 +2,7 @@ using Hookline.Modules.YouTubeUploads.Domain;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hookline.Modules.YouTubeUploads.Infrastructure;
@@ -35,7 +36,8 @@ public sealed class GoogleAccountsService(
     YouTubeUploadsDbContext db,
     IGoogleConnections googleAccounts,
     YouTubeUploadService youtube,
-    IQuotaService quota)
+    IQuotaService quota,
+    ILogger<GoogleAccountsService> logger)
 {
     private string RedirectUri => options.Value.Google.RedirectUri;
 
@@ -73,7 +75,7 @@ public sealed class GoogleAccountsService(
             (channelId, channelTitle, avatarUrl) = await youtube.GetChannelInfoAsync(creds.ClientId, creds.ClientSecret, token.RefreshToken, ct);
             await quota.ChargeUnitsAsync(projectId, 1); // channels.list ≈ 1 unit against the non-upload pool
         }
-        catch { /* channel lookup is best-effort; the account still works for upload */ }
+        catch (Exception ex) { logger.LogWarning(ex, "Channel lookup failed during OAuth exchange for project {ProjectId}", projectId); }
 
         var scopes = string.Join(' ', GoogleCredentialFactory.Scopes);
         var label = channelTitle ?? "YouTube account";

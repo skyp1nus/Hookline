@@ -217,7 +217,8 @@ public sealed class UploadJobHandler(
             // doesn't strand the project's daily upload bucket on an upload that produced nothing.
             if (reservedProjectId is not null && job.YouTubeVideoId is null)
             {
-                try { await quota.ReleaseUploadAsync(reservedProjectId.Value); } catch { /* best effort */ }
+                try { await quota.ReleaseUploadAsync(reservedProjectId.Value); }
+                catch (Exception qex) { logger.LogDebug(qex, "Best-effort quota release failed for project {ProjectId}", reservedProjectId.Value); }
             }
             // Before the YouTube upload starts nothing exists on YouTube → re-queue so startup
             // recovery resumes it from scratch. Once Uploading/Processing it is the point of no
@@ -236,12 +237,14 @@ public sealed class UploadJobHandler(
             // failed attempt doesn't burn the project's daily upload bucket (the counter is an estimate).
             if (reservedProjectId is not null && job.YouTubeVideoId is null)
             {
-                try { await quota.ReleaseUploadAsync(reservedProjectId.Value); } catch { /* best effort */ }
+                try { await quota.ReleaseUploadAsync(reservedProjectId.Value); }
+                catch (Exception qex) { logger.LogDebug(qex, "Best-effort quota release failed for project {ProjectId}", reservedProjectId.Value); }
             }
             // Revoked / wrong-client / unauthorized → flag the account so rotation skips it next time.
             if (activeAccountId is not null && job.YouTubeVideoId is null && IsAuthError(ex))
             {
-                try { await oauth.MarkAccountErrorAsync(activeAccountId.Value); } catch { /* best effort */ }
+                try { await oauth.MarkAccountErrorAsync(activeAccountId.Value); }
+                catch (Exception aex) { logger.LogWarning(aex, "Best-effort MarkAccountError failed for account {AccountId}", activeAccountId.Value); }
             }
             await FailAsync(job, Summarize(ex));
             await status.RefreshQueueAsync(CancellationToken.None);

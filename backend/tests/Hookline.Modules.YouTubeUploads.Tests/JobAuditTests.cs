@@ -4,6 +4,7 @@ using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Secrets;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Hookline.Modules.YouTubeUploads.Tests;
 
@@ -62,7 +63,7 @@ public sealed class JobAuditTests
         using var db = NewDb();
         var audit = new RecordingAuditLog();
         // googleAccounts is unused by TransitionAsync — only the db + audit collaborators matter here.
-        var jobs = new JobService(db, googleAccounts: null!, audit);
+        var jobs = new JobService(db, googleAccounts: null!, audit, NullLogger<JobService>.Instance);
 
         var job = NewQueuedJob();
         db.Jobs.Add(job);
@@ -91,7 +92,7 @@ public sealed class JobAuditTests
     {
         using var db = NewDb();
         var audit = new RecordingAuditLog();
-        var jobs = new JobService(db, googleAccounts: null!, audit);
+        var jobs = new JobService(db, googleAccounts: null!, audit, NullLogger<JobService>.Instance);
 
         var job = NewQueuedJob();
         db.Jobs.Add(job);

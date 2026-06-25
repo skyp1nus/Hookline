@@ -3,6 +3,7 @@ using Hookline.SharedKernel.Audit;
 using Hookline.SharedKernel.Connections;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Hookline.Modules.YouTubeUploads.Infrastructure;
 
@@ -71,7 +72,7 @@ public interface IJobService
     Task<(int UploadsToday, int UploadsLast24h, int ErrorsLast24h)> GetDashboardCountsAsync(CancellationToken ct = default);
 }
 
-public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections googleAccounts, IAuditLog audit) : IJobService
+public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections googleAccounts, IAuditLog audit, ILogger<JobService> logger) : IJobService
 {
     public async Task<UploadJob> CreateAsync(NewJob i, CancellationToken ct = default)
     {
@@ -147,6 +148,7 @@ public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections go
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // swallow: the transition already committed; losing one audit row is not worth failing the job
+            logger.LogWarning(ex, "Audit write failed for upload.{State} on job {JobId}", to, job.Id);
         }
     }
 

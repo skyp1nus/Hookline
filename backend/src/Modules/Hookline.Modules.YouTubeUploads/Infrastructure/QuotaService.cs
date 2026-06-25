@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using StackExchange.Redis;
@@ -39,7 +40,7 @@ public interface IQuotaService
     Task ChargeUnitsAsync(Guid projectId, int units);
 }
 
-public sealed class QuotaService(IConnectionMultiplexer redis, IOptions<YouTubeUploadsOptions> options) : IQuotaService
+public sealed class QuotaService(IConnectionMultiplexer redis, IOptions<YouTubeUploadsOptions> options, ILogger<QuotaService> logger) : IQuotaService
 {
     private readonly YouTubeUploadsOptions _opt = options.Value;
 
@@ -91,6 +92,6 @@ public sealed class QuotaService(IConnectionMultiplexer redis, IOptions<YouTubeU
             if (after == units) // first charge of this PT day -> bound the key's lifetime
                 await db.KeyExpireAsync(key, PacificTime.UntilMidnight() + TimeSpan.FromHours(1));
         }
-        catch { /* best-effort meter — a Redis hiccup must never break the calling request */ }
+        catch (Exception ex) { logger.LogWarning(ex, "Quota unit charge failed for project {ProjectId}", projectId); }
     }
 }
