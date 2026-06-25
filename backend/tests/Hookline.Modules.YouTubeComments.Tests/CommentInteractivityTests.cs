@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 
 using Hookline.Modules.YouTubeComments.Infrastructure;
+using Hookline.SharedKernel.Slack;
 
 namespace Hookline.Modules.YouTubeComments.Tests;
 

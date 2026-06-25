@@ -8,6 +8,7 @@ using Hookline.SharedKernel.Jobs;
 using Hookline.SharedKernel.Maintenance;
 using Hookline.SharedKernel.Messaging;
 using Hookline.SharedKernel.Modules;
+using Hookline.SharedKernel.Slack;
 
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;

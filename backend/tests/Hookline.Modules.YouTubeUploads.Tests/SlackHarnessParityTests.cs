@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Hookline.DevTools.SlackHarness;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
+using Hookline.SharedKernel.Slack;
 
 namespace Hookline.Modules.YouTubeUploads.Tests;
 

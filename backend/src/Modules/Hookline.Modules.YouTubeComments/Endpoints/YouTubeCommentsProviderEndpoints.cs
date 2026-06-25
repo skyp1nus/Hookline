@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 
 using Hookline.Modules.YouTubeComments.Infrastructure;
+using Hookline.SharedKernel.Slack;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;

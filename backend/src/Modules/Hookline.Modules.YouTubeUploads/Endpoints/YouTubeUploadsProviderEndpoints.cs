@@ -7,6 +7,7 @@ using Hookline.Modules.YouTubeUploads.Domain;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
 using Hookline.Modules.YouTubeUploads.Jobs;
 using Hookline.SharedKernel.Jobs;
+using Hookline.SharedKernel.Slack;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;

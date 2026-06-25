@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Hookline.Modules.YouTubeUploads.Infrastructure;
+namespace Hookline.SharedKernel.Slack;
 
 /// <summary>
 /// Verifies Slack's X-Slack-Signature over the RAW request body:
