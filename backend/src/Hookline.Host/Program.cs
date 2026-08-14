@@ -17,7 +17,10 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    // AddSerilog installs Serilog as the ILoggerFactory, so the Logging:LogLevel section never
+    // reaches it — levels have to come from the Serilog section instead.
     builder.Services.AddSerilog((_, lc) => lc
+        .ReadFrom.Configuration(builder.Configuration)
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Application", "Hookline")
         .WriteTo.Console(outputTemplate:
