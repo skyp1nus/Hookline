@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.YouTube.v3;
 
@@ -5,9 +7,13 @@ using Hangfire;
 
 using Hookline.Modules.YouTubeUploads.Domain;
 using Hookline.Modules.YouTubeUploads.Infrastructure;
+using Hookline.SharedKernel.Jobs;
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using StackExchange.Redis;
 
 namespace Hookline.Modules.YouTubeUploads.Jobs;
 
@@ -30,27 +36,32 @@ public sealed class UploadJobHandler(
     YouTubeUploadService youtube,
     IQuotaService quota,
     ICancellationFlags cancelFlags,
+    IJobLease leases,
     IProgressTracker progress,
     ISlackStatusService status,
     SlackClient slack,
     SlackChannelService workspaces,
     UploadSettingsService settings,
     IOptions<YouTubeUploadsOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<UploadJobHandler> logger)
 {
     private const string PhaseDownload = "Downloading from Drive";
     private const string PhaseUpload = "Uploading to YouTube";
     private const string PhaseProcessing = "YouTube processing";
-    private const long CancelCheckBytes = 4_000_000;
+    private static readonly TimeSpan CancelPollInterval = TimeSpan.FromSeconds(3);
     private const long MaxThumbnailBytes = 2L * 1024 * 1024; // YouTube's hard limit for thumbnails.set
 
     // Attempts=0: never auto-retry on failure (a failed upload must not silently re-upload).
-    // DisableConcurrentExecution: a per-job lock so a restart-recovery re-enqueue can never run
-    // the same job twice in parallel (the re-entry guards below then make the second run a no-op).
+    // Long-running queue: capped worker pool, so one slow transfer never blocks the rest.
     [AutomaticRetry(Attempts = 0)]
-    [DisableConcurrentExecution(timeoutInSeconds: 600)]
+    [Queue(JobQueues.LongRunning)]
     public async Task RunAsync(Guid jobId, CancellationToken ct)
     {
+        var lease = await TryLeaseAsync(jobId, ct);
+        if (lease is null) return;
+        await using var held = lease;
+
         var job = await jobs.GetAsync(jobId, ct);
         if (job is null) { logger.LogWarning("Upload job {Id} not found", jobId); return; }
         if (job.IsTerminal) return;
@@ -116,35 +127,50 @@ public sealed class UploadJobHandler(
 
             using var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var cancelledDuringDownload = false;
-            long lastCancelCheck = 0;
-
-            await using (var fileOut = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            async Task WatchCancelAsync()
             {
+                using var timer = new PeriodicTimer(CancelPollInterval);
                 try
                 {
-                    await drive.DownloadAsync(driveService, job.DriveFileId, fileOut, bytes =>
+                    while (await timer.WaitForNextTickAsync(downloadCts.Token))
                     {
-                        progress.Set(job.Id, new JobProgress(JobState.Downloading, bytes, job.BytesTotal, PhaseDownload));
-                        _ = status.UpdateProgressAsync(job.Id);
-
-                        if (bytes - lastCancelCheck >= CancelCheckBytes)
-                        {
-                            lastCancelCheck = bytes;
-                            if (cancelFlags.IsRequestedAsync(job.Id).GetAwaiter().GetResult())
-                            {
-                                cancelledDuringDownload = true;
-                                downloadCts.Cancel();
-                            }
-                        }
-                    }, chunkBytes, downloadCreds.ProjectId, downloadCts.Token);
+                        try { if (!await cancelFlags.IsRequestedAsync(job.Id)) continue; }
+                        catch (Exception ex) when (IsRedisError(ex)) { continue; } // a blip must not kill the download
+                        cancelledDuringDownload = true;
+                        await downloadCts.CancelAsync();
+                        return;
+                    }
                 }
-                catch (OperationCanceledException) when (cancelledDuringDownload)
-                {
-                    // user cancel — handled right below
-                }
+                catch (OperationCanceledException) { }
             }
 
-            if (cancelledDuringDownload) { await MarkCancelledAsync(job, tempPath); return; }
+            var cancelWatch = WatchCancelAsync();
+            var downloadClock = Stopwatch.StartNew();
+            RangedDownloadStats downloaded;
+            try
+            {
+                downloaded = await drive.DownloadAsync(driveService, job.DriveFileId, tempPath, info.Size, bytes =>
+                {
+                    progress.Set(job.Id, new JobProgress(JobState.Downloading, bytes, job.BytesTotal, PhaseDownload));
+                    _ = status.UpdateProgressAsync(job.Id);
+                }, downloadCreds.ProjectId, downloadCts.Token);
+            }
+            catch (Exception) when (cancelledDuringDownload)
+            {
+                await MarkCancelledAsync(job, tempPath);
+                return;
+            }
+            finally
+            {
+                await downloadCts.CancelAsync();
+                await cancelWatch;
+            }
+
+            var seconds = Math.Max(0.001, downloadClock.Elapsed.TotalSeconds);
+            logger.LogInformation(
+                "Drive download {JobId}: {MiB:F0} MiB in {Seconds:F0}s ({Rate:F1} MiB/s), {Streams} streams, {Requests} requests, {Retries} retries",
+                job.Id, downloaded.Bytes / 1048576.0, seconds, downloaded.Bytes / 1048576.0 / seconds,
+                downloaded.Streams, downloaded.Requests, downloaded.Retries);
 
             // Last chance to cancel before the point of no return.
             if (await cancelFlags.IsRequestedAsync(job.Id)) { await MarkCancelledAsync(job, tempPath); return; }
@@ -196,22 +222,15 @@ public sealed class UploadJobHandler(
                     ct);
             }
 
-            await jobs.TransitionAsync(job, JobState.Processing, "all bytes sent; YouTube transcoding", ct);
-
+            // The video exists: save its id with the first transition, and never let a later step fail the job.
             job.YouTubeVideoId = result.VideoId;
             job.YouTubeUrl = result.Url;
-            await jobs.TransitionAsync(job, JobState.Done, $"done → {result.Url}", ct);
-            progress.Remove(job.Id);
-
-            // Custom thumbnail is best-effort and runs AFTER the video exists — it must never fail the job.
-            var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, reservedProjectId.Value, ct);
-            var visibilityLabel = YouTubeUploadService.NormalizeVisibility(uploadSettings.Visibility);
-            await NotifyAsync(job, $":white_check_mark: Uploaded *{job.Title}* ({visibilityLabel}) → {result.Url}{thumbNote}");
-            await status.RefreshQueueAsync(ct);
+            await FinishUploadedAsync(job, ytService, result, uploadSettings, reservedProjectId.Value, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            logger.LogWarning("Upload job {Id} interrupted by shutdown", jobId);
+            var shuttingDown = lifetime.ApplicationStopping.IsCancellationRequested;
+            logger.LogWarning("Upload job {Id} interrupted by {Cause}", jobId, shuttingDown ? "shutdown" : "worker abort");
             progress.Remove(jobId);
             // Reserved an upload but no video id yet → the insert never completed; release so a restart
             // doesn't strand the project's daily upload bucket on an upload that produced nothing.
@@ -223,7 +242,13 @@ public sealed class UploadJobHandler(
             // recovery resumes it from scratch. Once Uploading/Processing it is the point of no
             // return — never re-upload (would duplicate the video).
             if (job.YouTubeVideoId is null && job.State is JobState.Queued or JobState.Downloading)
-                await jobs.TransitionAsync(job, JobState.Queued, "interrupted by restart — will resume", CancellationToken.None);
+            {
+                // Only a restart runs recovery; an abort outside shutdown would leave it queued forever.
+                if (shuttingDown)
+                    await jobs.TransitionAsync(job, JobState.Queued, "interrupted by restart — will resume", CancellationToken.None);
+                else
+                    await FailAsync(job, "The upload worker was stopped before the YouTube upload — re-post the video to retry.");
+            }
             else
                 await FailAsync(job, "Interrupted after the YouTube upload started — verify in YouTube Studio; the bot won’t re-upload.");
             throw; // don't let Hangfire mark this as succeeded
@@ -252,6 +277,58 @@ public sealed class UploadJobHandler(
             await cancelFlags.ClearAsync(jobId);
         }
     }
+
+    /// <summary>The run's execution lease, or null when this run must not proceed (duplicate execution, or Redis
+    /// down — then a still-queued job is failed so it never lingers as a ghost).</summary>
+    private async Task<IAsyncDisposable?> TryLeaseAsync(Guid jobId, CancellationToken ct)
+    {
+        try
+        {
+            var lease = await leases.TryAcquireAsync(jobId);
+            if (lease is null)
+                logger.LogWarning("Upload job {Id} is already running elsewhere — skipping duplicate execution", jobId);
+            return lease;
+        }
+        catch (Exception ex) when (IsRedisError(ex))
+        {
+            logger.LogError(ex, "Upload job {Id}: couldn't take the execution lease", jobId);
+            if (await jobs.GetAsync(jobId, ct) is { State: JobState.Queued } pending)
+                await FailAsync(pending, "Couldn't start the upload (Redis unavailable) — re-post the video to retry.");
+            return null;
+        }
+    }
+
+    /// <summary>Done + success note once videos.insert returned. Failures here are logged, never turned into a
+    /// Failed job — that would invite a re-post and a duplicate video.</summary>
+    private async Task FinishUploadedAsync(
+        UploadJob job, YouTubeService ytService, YouTubeUploadResult result, UploadSettings uploadSettings,
+        Guid projectId, CancellationToken ct)
+    {
+        progress.Remove(job.Id);
+        try
+        {
+            await jobs.TransitionAsync(job, JobState.Processing, "all bytes sent; YouTube transcoding", CancellationToken.None);
+            await jobs.TransitionAsync(job, JobState.Done, $"done → {result.Url}", CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Upload job {Id}: video {Url} is live but saving its state failed", job.Id, result.Url);
+        }
+
+        try
+        {
+            var thumbNote = await TrySetThumbnailAsync(job, ytService, result.VideoId, projectId, ct);
+            var visibilityLabel = YouTubeUploadService.NormalizeVisibility(uploadSettings.Visibility);
+            await NotifyAsync(job, $":white_check_mark: Uploaded *{job.Title}* ({visibilityLabel}) → {result.Url}{thumbNote}");
+            await status.RefreshQueueAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Upload job {Id}: post-upload Slack steps failed (video is live)", job.Id);
+        }
+    }
+
+    private static bool IsRedisError(Exception ex) => ex is RedisException or TimeoutException;
 
     /// <summary>Order the channel's projects by remaining uploads (most headroom first) and reserve on the
     /// first that still fits today's upload bucket. Returns null when every project is exhausted. Internal +

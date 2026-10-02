@@ -27,8 +27,8 @@ public interface ISlackStatusService
 /// Singleton. One status message PER mapped channel. Each publish runs in its own DI scope (own
 /// DbContext) and is serialized by a semaphore so the high-frequency progress callbacks never race
 /// the worker's DbContext. The current message ts is kept per channel in Redis (<c>ytu:status:ts:*</c>,
-/// self-expiring per the noeviction policy). Throttle is per-channel: in-place updates at most every
-/// 2.5s AND ≥5% delta (phase changes always pass).
+/// self-expiring per the noeviction policy). Throttle: in-place updates at most every 2.5s per channel AND
+/// ≥5% delta for the reporting job (a job's phase change always passes).
 /// </summary>
 public sealed class SlackStatusService(
     IServiceScopeFactory scopeFactory,
@@ -37,13 +37,17 @@ public sealed class SlackStatusService(
     ILogger<SlackStatusService> logger) : ISlackStatusService
 {
     private static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(2.5);
+    // All channels share one app's chat.update budget (Tier 3, ~50/min) — keep the sum under it.
+    private static readonly TimeSpan MinGlobalInterval = TimeSpan.FromSeconds(1.5);
     private const int MinPercentDelta = 5;
     // Self-expiry for the status-ts key (Redis runs noeviction). Refreshed on every write so a live
     // status never loses its ts mid-life; a stale ts after a long quiet period simply reposts.
     private static readonly TimeSpan StatusTtl = TimeSpan.FromHours(48);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly ConcurrentDictionary<string, (DateTimeOffset At, int Percent, string? Phase)> _throttle = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _channelPublishedAt = new();
+    private readonly ConcurrentDictionary<Guid, (int Percent, string? Phase)> _jobPublished = new();
+    private long _anyPublishedAtTicks;
 
     public async Task RefreshQueueAsync(CancellationToken ct = default)
     {
@@ -53,9 +57,11 @@ public sealed class SlackStatusService(
             using var scope = scopeFactory.CreateScope();
             var sp = scope.ServiceProvider;
             var routes = await sp.GetRequiredService<ChannelMappingService>().ListRoutesAsync(ct);
+            foreach (var id in _jobPublished.Keys)
+                if (progress.Get(id) is null) _jobPublished.TryRemove(id, out _);
             foreach (var r in routes)
             {
-                _throttle.TryRemove(r.SlackChannelId, out _); // reposting resets the throttle
+                _channelPublishedAt.TryRemove(r.SlackChannelId, out _); // reposting resets the throttle
                 await PublishChannelAsync(sp, r.SlackChannelId, r.GoogleAccountId, repost: true, ct);
             }
         }
@@ -93,7 +99,7 @@ public sealed class SlackStatusService(
         var sp = scope.ServiceProvider;
         var job = await sp.GetRequiredService<IJobService>().GetAsync(jobId, ct);
         if (job is null) return;
-        if (!ShouldUpdate(job.SlackChannelId, p.Percent, p.Phase)) return;
+        if (!ShouldUpdate(job.SlackChannelId, jobId, p.Percent, p.Phase)) return;
 
         if (!await _gate.WaitAsync(TimeSpan.FromSeconds(10), ct)) return;
         try
@@ -170,18 +176,17 @@ public sealed class SlackStatusService(
         }
         var (remainingUploads, totalUploads) = await AggregateQuotaAsync(projectIds, quotaSvc);
 
-        ActiveJobView? active = null;
-        if (snap.Active is { } a)
+        var active = snap.Active.Select(a =>
         {
             var p = progress.Get(a.Id);
-            active = new ActiveJobView(
+            return new ActiveJobView(
                 DisplayName(a),
                 PhaseLabel(a.State),
                 p?.Percent ?? 0,
                 p?.BytesTransferred ?? a.BytesTransferred,
                 p?.BytesTotal ?? a.BytesTotal,
                 a.State == JobState.Processing);
-        }
+        }).ToList();
 
         var queued = snap.Queued.Select(q => new QueuedJobView(q.Id, DisplayName(q))).ToList();
         var recent = snap.Recent
@@ -217,17 +222,21 @@ public sealed class SlackStatusService(
         _ => s.ToString(),
     };
 
-    private bool ShouldUpdate(string channelId, int percent, string? phase)
+    private bool ShouldUpdate(string channelId, Guid jobId, int percent, string? phase)
     {
         var now = DateTimeOffset.UtcNow;
-        var prev = _throttle.TryGetValue(channelId, out var v) ? v : (At: DateTimeOffset.MinValue, Percent: -1, Phase: (string?)null);
+        var at = _channelPublishedAt.GetValueOrDefault(channelId, DateTimeOffset.MinValue);
+        var prev = _jobPublished.TryGetValue(jobId, out var v) ? v : (Percent: -1, Phase: (string?)null);
         var phaseChanged = phase != prev.Phase;
-        var enoughTime = now - prev.At >= MinInterval;
+        var anyAt = new DateTimeOffset(Interlocked.Read(ref _anyPublishedAtTicks), TimeSpan.Zero);
+        var enoughTime = now - at >= MinInterval && now - anyAt >= MinGlobalInterval;
         var enoughDelta = Math.Abs(percent - prev.Percent) >= MinPercentDelta;
 
         if (phaseChanged || (enoughTime && enoughDelta))
         {
-            _throttle[channelId] = (now, percent, phase);
+            Interlocked.Exchange(ref _anyPublishedAtTicks, now.UtcTicks);
+            _channelPublishedAt[channelId] = now;
+            _jobPublished[jobId] = (percent, phase);
             return true;
         }
         return false;

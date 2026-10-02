@@ -106,8 +106,17 @@ public static class DependencyInjection
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
-            .UsePostgreSqlStorage(opt => opt.UseNpgsqlConnection(postgres)));
-        services.AddHangfireServer();
+            // Sliding: without it a job running past InvisibilityTimeout (30 min) is re-fetched and runs twice.
+            .UsePostgreSqlStorage(
+                opt => opt.UseNpgsqlConnection(postgres),
+                new PostgreSqlStorageOptions { UseSlidingInvisibilityTimeout = true }));
+        services.AddHangfireServer(o => o.Queues = [JobQueues.Default]);
+        services.AddHangfireServer(o =>
+        {
+            o.ServerName = $"{Environment.MachineName}:{JobQueues.LongRunning}";
+            o.Queues = [JobQueues.LongRunning];
+            o.WorkerCount = Math.Max(1, config.GetValue("Hangfire:LongRunningWorkers", 3));
+        });
 
         services.AddHealthChecks()
             .AddCheck<PostgresHealthCheck>("postgres")
