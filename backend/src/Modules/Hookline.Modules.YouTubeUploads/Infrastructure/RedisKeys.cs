@@ -15,6 +15,9 @@ public static class RedisKeys
     /// <summary>Per-job cancellation flag (checked atomically before each worker step). TTL 24h.</summary>
     public static string Cancel(Guid jobId) => $"{Prefix}cancel:job:{jobId}";
 
+    /// <summary>Per-job execution lease (owner token). TTL 2 min, renewed while the job runs.</summary>
+    public static string Lease(Guid jobId) => $"{Prefix}lease:job:{jobId}";
+
     /// <summary>Live Slack status-message <c>ts</c> for a channel (delete+repost on queue change).
     /// Keyed by channel id; refreshed-with-TTL on every write (noeviction → must self-expire).</summary>
     public static string StatusTs(string channelId) => $"{Prefix}status:ts:{channelId}";

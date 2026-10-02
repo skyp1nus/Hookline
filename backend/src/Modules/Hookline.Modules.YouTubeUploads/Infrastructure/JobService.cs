@@ -22,7 +22,7 @@ public sealed record NewJob(
     string? ThumbnailMimeType = null);
 
 public sealed record StatusSnapshot(
-    UploadJob? Active,
+    IReadOnlyList<UploadJob> Active,
     IReadOnlyList<UploadJob> Queued,
     IReadOnlyList<UploadJob> Recent,
     int UploadedLast24h);
@@ -163,8 +163,9 @@ public sealed class JobService(YouTubeUploadsDbContext db, IGoogleConnections go
                      && (j.State == JobState.Downloading
                       || j.State == JobState.Uploading
                       || j.State == JobState.Processing))
-            .OrderByDescending(j => j.UpdatedAt)
-            .FirstOrDefaultAsync(ct);
+            .OrderBy(j => j.DownloadStartedAt)
+            .ThenBy(j => j.CreatedAt)
+            .ToListAsync(ct);
 
         var queued = await db.Jobs.AsNoTracking()
             .Where(j => j.SlackChannelId == slackChannelId

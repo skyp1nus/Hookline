@@ -38,6 +38,18 @@ public sealed class YouTubeUploadsOptions
     /// <summary>Transfer chunk size in bytes (clamped to ≥1 MB).</summary>
     public int TransferChunkSizeBytes => (TransferChunkSizeMb < 1 ? 1 : TransferChunkSizeMb) * 1024 * 1024;
 
+    /// <summary>Parallel ranged requests per Drive download.</summary>
+    public int DriveDownloadStreams { get; set; } = 4;
+
+    /// <summary>Size of each ranged Drive request in MB.</summary>
+    public int DriveDownloadPartMb { get; set; } = 32;
+
+    /// <summary>A Drive stream idle this long is dropped and resumed on a fresh request.</summary>
+    public int DriveStallTimeoutSeconds { get; set; } = 30;
+
+    public int DriveDownloadPartBytes => Math.Clamp(DriveDownloadPartMb, 1, 1024) * 1024 * 1024;
+    public TimeSpan DriveStallTimeout => TimeSpan.FromSeconds(Math.Max(5, DriveStallTimeoutSeconds));
+
     public sealed class SlackSettings
     {
         /// <summary>App-level signing secret (env only — OAuth install does not return it).</summary>

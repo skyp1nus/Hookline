@@ -49,6 +49,7 @@ public sealed class YouTubeUploadsModule : IModule
         // Stateless / Redis / in-memory singletons.
         services.AddSingleton<IDedupService, DedupService>();
         services.AddSingleton<ICancellationFlags, CancellationFlags>();
+        services.AddSingleton<IJobLease, JobLease>();
         services.AddSingleton<IQuotaService, QuotaService>();
         services.AddSingleton<IApiUsageService, ApiUsageService>();
         services.AddSingleton<IProgressTracker, ProgressTracker>();

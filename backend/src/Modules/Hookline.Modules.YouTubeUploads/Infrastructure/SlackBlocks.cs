@@ -16,7 +16,7 @@ public sealed record DoneJobView(
 public sealed record StatusView(
     int RemainingUploads,
     int TotalUploads,
-    ActiveJobView? Active,
+    IReadOnlyList<ActiveJobView> Active,
     IReadOnlyList<QueuedJobView> Queued,
     IReadOnlyList<DoneJobView> Recent,
     int UploadedLast24h,
@@ -26,6 +26,7 @@ public sealed record StatusView(
 public static class SlackBlocks
 {
     private const int BarSegments = 10;
+    private const int MaxQueuedRows = 20; // keeps the message well under Slack's 50-block cap
 
     public static (string text, object[] blocks) Status(StatusView v)
     {
@@ -39,9 +40,9 @@ public static class SlackBlocks
             Section(header),
         };
 
-        if (v.Active is { } a)
+        if (v.Active.Count > 0) blocks.Add(Divider());
+        foreach (var a in v.Active)
         {
-            blocks.Add(Divider());
             if (a.Processing)
             {
                 blocks.Add(Section($":arrow_forward: *{Escape(a.FileName)}*\n   YouTube processing… :hourglass_flowing_sand:"));
@@ -54,7 +55,7 @@ public static class SlackBlocks
             }
         }
 
-        foreach (var q in v.Queued)
+        foreach (var q in v.Queued.Take(MaxQueuedRows))
         {
             blocks.Add(new
             {
@@ -70,6 +71,8 @@ public static class SlackBlocks
                 },
             });
         }
+        if (v.Queued.Count > MaxQueuedRows)
+            blocks.Add(Context($"…and {v.Queued.Count - MaxQueuedRows} more queued"));
 
         if (v.Recent.Count > 0)
         {
@@ -78,8 +81,9 @@ public static class SlackBlocks
                 blocks.Add(Context(RecentLine(d)));
         }
 
-        var fallback = v.Active is { } act
-            ? $"Upload queue — {act.FileName} {act.Percent}% ({v.RemainingUploads}/{v.TotalUploads} left)"
+        var more = v.Active.Count > 1 ? $" +{v.Active.Count - 1} more" : "";
+        var fallback = v.Active.Count > 0
+            ? $"Upload queue — {v.Active[0].FileName} {v.Active[0].Percent}%{more} ({v.RemainingUploads}/{v.TotalUploads} left)"
             : $"Upload queue — {v.Queued.Count} queued ({v.RemainingUploads}/{v.TotalUploads} left)";
 
         return (fallback, blocks.ToArray());
