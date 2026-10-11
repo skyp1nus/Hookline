@@ -22,6 +22,7 @@ backend ─▶ shared Postgres (schema-per-module) + Redis (ytu:/ytc:/conn:/auth
 | File | Role |
 |------|------|
 | `docker-compose.prod.yml` | Prod stack: 2 services, external `web` net, pinned names, no host ports, `ASPNETCORE_ENVIRONMENT=Production`, `COOKIE_SECURE=true`, GHCR images. |
+| `deploy.sh` | Runs on the server per deploy: host-wide lock, private GHCR login, `pull` + `up -d --wait`, safe Caddy snippet install + reload, old-tag cleanup. |
 | `Caddyfile` | Site block for the shared Caddy → `/opt/shared/sites/hookline.caddy`. Automatic HTTPS. Routes providers + `/hangfire` to backend, rest to frontend. |
 | `.env.prod.example` | Every required prod var with comments. Copy to `/opt/hookline/.env` and fill. Placeholders contain `change-me` so an unfilled copy fails the boot guard. |
 | `local/` | **Local prod-profile smoke harness** — brings the prod compose up on a laptop to verify it. Not used in deployment. |
@@ -82,16 +83,20 @@ boot, then refuses to serve if any security secret is weak. Then: open the panel
 
 ## CI / CD (`.github/workflows/ci.yml`)
 
-- `backend` + `frontend` jobs build/test on every push/PR (`.slnx` incl. architecture
-  tests, .NET 10; bun build). These run **for real** today.
-- `docker` (build + push both images to GHCR) and `deploy` (scp compose + Caddy snippet,
-  pull, `up -d`, hot-reload Caddy) are **DISABLED** behind a one-line gate.
+- `backend` (build + architecture/unit tests) and `frontend` (bun build) run on every PR and on
+  push to `main`.
+- `images` (one matrix job per image) runs **alongside** them: on `main` it builds amd64 images with
+  a gha layer cache and pushes `ghcr.io/skyp1nus/hookline/{backend,frontend}:<sha>`; on a PR it only
+  builds, and only when Dockerfiles, project files or lockfiles changed.
+- `deploy` waits for all three, joins the tailnet, copies `docker-compose.prod.yml`, `Caddyfile` and
+  `deploy.sh` to `/opt/hookline` over ssh and runs `deploy.sh`. A failed health wait fails the job and
+  prints the previous tag; roll back with
+  `cd /opt/hookline && IMAGE_TAG=<previous sha> docker compose -f docker-compose.prod.yml up -d --wait`
+  (only if the failed release added no migration).
+- `latest` moves `:latest` to the deployed sha once the deploy succeeds.
 
-**To enable deployment** — on the `docker` job, change `if: false` →
-`if: github.ref == 'refs/heads/main'`. The `deploy` job (`needs: [docker]`) then runs on
-main automatically. First set repo secrets `DEPLOY_HOST` and `DEPLOY_SSH_KEY`, and confirm
-`GH_REPO` / image names. `NEXT_PUBLIC_BACKEND_URL` is baked at image-build time as
-`https://danielhub.dev` (a runtime env can't override an inlined value).
+Secrets: `DEPLOY_HOST` (tailnet name), `DEPLOY_SSH_KEY`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`.
+`NEXT_PUBLIC_BACKEND_URL` is baked at image-build time (a runtime env can't override an inlined value).
 
 ## Hangfire
 
@@ -134,8 +139,7 @@ second Create-Owner rejected (403) → `bootstrap-state` (ownerExists=true).
    `/opt/shared/.env`; create `/opt/hookline/.env` from `.env.prod.example` with real secrets.
 3. **OAuth** — register the 3 callback URIs (Google client(s) + both Slack apps) and the 2
    Slack webhook Request URLs; set matching `App__PublicBaseUrl`.
-4. **Enable CI deploy** — flip the `docker` job `if: false` → `if: github.ref == 'refs/heads/main'`;
-   set `DEPLOY_HOST` + `DEPLOY_SSH_KEY` secrets; merge to `main`.
+4. **Enable CI deploy** — set the secrets listed under CI / CD; merge to `main`.
 5. **Verify prod** — `/health` green; log in; one-time Create-Owner; smoke an upload + a comment.
 6. **Decommission** — once Hookline is serving, redirect/retire the old subdomains and stop the
    legacy slacktube / comment-bridge stacks (free the RAM on the 4 GB box).

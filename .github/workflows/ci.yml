@@ -130,12 +130,17 @@ jobs:
 
   # Requires repo secrets DEPLOY_HOST, DEPLOY_SSH_KEY, TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET.
   deploy:
-    name: Deploy (scp compose + Caddy snippet, pull, up -d, reload Caddy)
+    name: Deploy (copy deploy/, pull, up --wait, reload Caddy)
     needs: [backend, frontend, images]
     if: >-
       !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
       needs.backend.result == 'success' && needs.frontend.result == 'success' && needs.images.result == 'success'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Queue, never cancel: a half-finished deploy is worse than a late one. deploy.sh also locks the host.
+    concurrency:
+      group: prod-deploy-${{ github.repository }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: read   # GITHUB_TOKEN can then pull this repo's private GHCR images on the server
@@ -149,7 +154,6 @@ jobs:
           tags: tag:ci
       - name: Resolve deploy host on the tailnet
         id: host
-        # appleboy actions run in a container that can't see MagicDNS, so hand them the tailnet IP.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
@@ -157,35 +161,39 @@ jobs:
           [ -n "$ip" ] || { echo "::error::DEPLOY_HOST does not resolve on the tailnet"; exit 1; }
           timeout 15 bash -c "</dev/tcp/$ip/22" || { echo "::error::$ip:22 is unreachable over the tailnet (ACL?)"; exit 1; }
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
-      - name: Copy compose + Caddy site block to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ steps.host.outputs.ip }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "deploy/docker-compose.prod.yml,deploy/Caddyfile"
-          target: "/opt/hookline"
-          strip_components: 1
-      - name: Pull, restart, install + reload shared Caddy
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ steps.host.outputs.ip }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
-            # Authenticate to GHCR for the private image pull. GITHUB_TOKEN is valid for the
-            # duration of this workflow and carries packages:read for this repo's packages.
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            cd /opt/hookline
-            export IMAGE_TAG="${{ github.sha }}"
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            # Publish this app's Caddy site block into the shared Caddy, then hot-reload.
-            install -D -m 644 Caddyfile /opt/shared/sites/hookline.caddy
-            docker exec shared-caddy-1 caddy reload --config /etc/caddy/Caddyfile
-            docker image prune -f
-            docker logout ghcr.io
+      # Plain OpenSSH, one multiplexed connection. Host keys aren't pinned (neither were they with
+      # appleboy); the peer is already authenticated by WireGuard.
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST_IP: ${{ steps.host.outputs.ip }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<EOF
+          Host prod
+            HostName $HOST_IP
+            User deploy
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 15
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%C
+            ControlPersist 120
+          EOF
+      - name: Copy compose, Caddy snippet, deploy script
+        run: tar -czf - -C deploy docker-compose.prod.yml Caddyfile deploy.sh | ssh prod 'tar -xzf - -C /opt/hookline'
+      - name: Pull, restart, wait for health, reload Caddy
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # shellcheck disable=SC2029 # sha and actor are meant to expand here
+          printf '%s' "$GHCR_TOKEN" | ssh prod "IMAGE_TAG='$GITHUB_SHA' GHCR_USER='$GITHUB_ACTOR' bash /opt/hookline/deploy.sh"
 
   # :latest only ever points at what prod runs, so a manual `compose up` without IMAGE_TAG is safe.
   latest:
