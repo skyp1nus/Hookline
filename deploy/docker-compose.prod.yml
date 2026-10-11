@@ -25,7 +25,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      DOTNET_gcServer: "0"                       # workstation GC: lower idle RSS inside the 640m cap
+      DOTNET_gcServer: "0"                       # workstation GC: lower idle RSS inside the 1g cap
 
       # Shared infra (aliases on the "web" network). Password must equal the role
       # password created in the shared Postgres (HOOKLINE_DB_PASSWORD in /opt/shared/.env).
@@ -67,7 +67,7 @@ services:
       YouTubeComments__Slack__RedirectUri: ${App__PublicBaseUrl}/slack/youtube-comments/oauth/callback
       YouTubeComments__PublicBaseUrl: ${App__PublicBaseUrl}
       YouTubeComments__AdminPanelUrl: ${App__PublicBaseUrl}
-    mem_limit: 640m
+    mem_limit: 1g
     networks: [web]
 
   frontend:
