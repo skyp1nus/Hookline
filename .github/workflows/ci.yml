@@ -112,10 +112,20 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+      - name: Resolve deploy host on the tailnet
+        id: host
+        # appleboy actions run in a container that can't see MagicDNS, so hand them the tailnet IP.
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          ip=$(tailscale ip -4 "$DEPLOY_HOST" 2>/dev/null || getent ahostsv4 "$DEPLOY_HOST" | awk 'NR==1 {print $1}')
+          [ -n "$ip" ] || { echo "::error::DEPLOY_HOST does not resolve on the tailnet"; exit 1; }
+          timeout 15 bash -c "</dev/tcp/$ip/22" || { echo "::error::$ip:22 is unreachable over the tailnet (ACL?)"; exit 1; }
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
       - name: Copy compose + Caddy site block to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.host.outputs.ip }}
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: "deploy/docker-compose.prod.yml,deploy/Caddyfile"
@@ -124,7 +134,7 @@ jobs:
       - name: Pull, restart, install + reload shared Caddy
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.host.outputs.ip }}
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
