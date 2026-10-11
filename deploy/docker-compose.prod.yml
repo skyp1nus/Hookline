@@ -67,6 +67,16 @@ services:
       YouTubeComments__Slack__RedirectUri: ${App__PublicBaseUrl}/slack/youtube-comments/oauth/callback
       YouTubeComments__PublicBaseUrl: ${App__PublicBaseUrl}
       YouTubeComments__AdminPanelUrl: ${App__PublicBaseUrl}
+    # Port open = Kestrel up, which happens only after migrations. Not /health: that one also
+    # probes the shared Postgres/Redis, and a blip there shouldn't fail a deploy. No curl in the image.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8080"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 180s
+      start_interval: 1s
+    stop_grace_period: 30s      # = the host's ShutdownTimeout; a clean stop still takes ~1s
     mem_limit: 1g
     networks: [web]
 
@@ -88,6 +98,13 @@ services:
       IDENTITY_SIGNING_KEY: ${Identity__SigningKey}     # must equal backend Identity__SigningKey
       SESSION_SECRET: ${SESSION_SECRET}                 # signs the BFF session cookie
       COOKIE_SECURE: "true"                             # panel is served over HTTPS by the shared Caddy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/hookline-icon.png"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
     mem_limit: 320m
     networks: [web]
 

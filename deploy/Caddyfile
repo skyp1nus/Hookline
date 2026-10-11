@@ -1,5 +1,5 @@
 # ── Hookline site block for the SHARED Caddy (/opt/shared) ───────────────────
-# The deploy step copies this file to /opt/shared/sites/hookline.caddy and runs
+# deploy/deploy.sh installs this file as /opt/shared/sites/hookline.caddy and runs
 #   docker exec shared-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 # The shared global Caddyfile imports /etc/caddy/sites/*.caddy and supplies the
 # ACME account email ({ email {$CADDY_EMAIL} }).
@@ -25,11 +25,18 @@ hookline.danielhub.dev {
 	# this route is what makes the dashboard reachable in prod (closes the deferred concern).
 	@backend path /slack/* /google/* /linkedin/* /hangfire /hangfire/*
 	handle @backend {
-		reverse_proxy hookline-backend-1:8080
+		reverse_proxy hookline-backend-1:8080 {
+			# Hold requests while the container restarts instead of answering 502.
+			lb_try_duration 30s
+			lb_try_interval 250ms
+		}
 	}
 
 	# Everything else — the Next.js hub (shell + /api/* BFF, login/logout, admin proxy).
 	handle {
-		reverse_proxy hookline-frontend-1:3000
+		reverse_proxy hookline-frontend-1:3000 {
+			lb_try_duration 30s
+			lb_try_interval 250ms
+		}
 	}
 }

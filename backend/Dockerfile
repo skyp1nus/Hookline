@@ -1,5 +1,5 @@
 # ── build ──────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /src
 
 # Restore first (cache layer) — copy only the project graph + central config.
@@ -13,10 +13,11 @@ COPY tests/Hookline.ArchitectureTests/Hookline.ArchitectureTests.csproj tests/Ho
 RUN dotnet restore src/Hookline.Host/Hookline.Host.csproj
 
 COPY . .
-RUN dotnet publish src/Hookline.Host/Hookline.Host.csproj -c Release -o /app --no-restore
+RUN dotnet publish src/Hookline.Host/Hookline.Host.csproj -c Release -o /app --no-restore \
+    && find src tests -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
 
 # ── runtime ────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 WORKDIR /app
 # Kerberos/GSSAPI lib so Npgsql doesn't log a (harmless) probe error on startup.
 RUN apt-get update \
